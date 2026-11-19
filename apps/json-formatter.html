@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>JSON Formatter · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  textarea.code { font-family: var(--mono); font-size: 13.5px; min-height: 170px; white-space: pre; overflow: auto; tab-size: 2; }
+  #status { font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>JSON Formatter &amp; Validator</h1>
+  <p>Paste JSON, then format, minify or sort keys. Errors show the exact line and column.</p>
+
+  <label for="source">Input</label>
+  <textarea id="source" class="code" spellcheck="false" placeholder='{"name":"DawApps","active":true}'></textarea>
+
+  <div class="grid2">
+    <div>
+      <label for="indent">Indent</label>
+      <select id="indent"><option value="2">2 spaces</option><option value="4">4 spaces</option><option value="tab">Tab</option></select>
+    </div>
+    <label class="check" style="align-self:end"><input type="checkbox" id="sort"> Sort keys A→Z</label>
+  </div>
+
+  <div class="row">
+    <button type="button" id="format">Format</button>
+    <button type="button" class="secondary" id="minify">Minify</button>
+    <button type="button" class="secondary" id="validate">Validate</button>
+  </div>
+
+  <div class="output" id="statusBox"><span id="status" class="muted">Waiting for input.</span></div>
+
+  <label for="output">Output</label>
+  <textarea id="output" class="code" readonly spellcheck="false"></textarea>
+  <div class="row">
+    <button type="button" class="secondary" id="copy">Copy output</button>
+    <button type="button" class="secondary" id="use">Use output as input</button>
+    <button type="button" class="secondary" id="clear">Clear</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+
+  function sortKeys(v) {
+    if (Array.isArray(v)) return v.map(sortKeys);
+    if (v && typeof v === 'object') return Object.keys(v).sort().reduce((o, k) => (o[k] = sortKeys(v[k]), o), {});
+    return v;
+  }
+
+  function locate(text, msg) {
+    let pos = null, m;
+    if ((m = msg.match(/position (\d+)/))) pos = +m[1];
+    if (pos != null) {
+      const before = text.slice(0, pos).split('\n');
+      return { line: before.length, col: before[before.length - 1].length + 1 };
+    }
+    if ((m = msg.match(/line (\d+) column (\d+)/))) return { line: +m[1], col: +m[2] };
+    return null;
+  }
+
+  function setStatus(ok, text) {
+    const s = $('status');
+    s.textContent = text;
+    s.className = ok ? 'ok' : 'error';
+  }
+
+  function run(mode) {
+    const src = $('source').value;
+    if (!src.trim()) { setStatus(false, 'Please paste some JSON first.'); $('output').value = ''; return; }
+    try {
+      let data = JSON.parse(src);
+      if ($('sort').checked) data = sortKeys(data);
+      const ind = $('indent').value;
+      const space = mode === 'minify' ? 0 : ind === 'tab' ? '\t' : +ind;
+      const out = mode === 'validate' ? '' : JSON.stringify(data, null, space);
+      if (mode !== 'validate') $('output').value = out;
+      const bytes = new TextEncoder().encode(src).length;
+      const type = Array.isArray(data) ? `array of ${data.length}` : data && typeof data === 'object' ? `object with ${Object.keys(data).length} keys` : typeof data;
+      setStatus(true, `✓ Valid JSON — ${type}, ${bytes.toLocaleString()} bytes` + (mode === 'minify' ? ` → ${new TextEncoder().encode(out).length.toLocaleString()} bytes` : ''));
+    } catch (e) {
+      const loc = locate(src, e.message);
+      setStatus(false, '✗ ' + e.message + (loc ? ` (line ${loc.line}, column ${loc.col})` : ''));
+      $('output').value = '';
+      if (loc) {
+        const lines = src.split('\n');
+        let start = 0;
+        for (let i = 0; i < loc.line - 1; i++) start += lines[i].length + 1;
+        $('source').focus();
+        $('source').setSelectionRange(start + loc.col - 1, start + loc.col);
+      }
+    }
+  }
+
+  $('format').addEventListener('click', () => run('format'));
+  $('minify').addEventListener('click', () => run('minify'));
+  $('validate').addEventListener('click', () => run('validate'));
+  $('copy').addEventListener('click', e => { if ($('output').value) DAW.copy($('output').value, e.currentTarget); });
+  $('use').addEventListener('click', () => { if ($('output').value) { $('source').value = $('output').value; $('output').value = ''; } });
+  $('clear').addEventListener('click', () => { $('source').value = $('output').value = ''; setStatus(false, 'Waiting for input.'); $('status').className = 'muted'; });
+  $('source').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') run('format'); });
+})();
+</script>
+</body>
+</html>

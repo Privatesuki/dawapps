@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Pomodoro Focus · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>Pomodoro Focus</h1>
+  <p>Work in focused sprints, then take a real break.</p>
+
+  <div class="seg" id="modes" role="group" aria-label="Timer mode">
+    <button type="button" data-mode="focus" aria-pressed="true">Focus</button>
+    <button type="button" data-mode="short" aria-pressed="false">Short break</button>
+    <button type="button" data-mode="long" aria-pressed="false">Long break</button>
+  </div>
+
+  <div class="output big-number" id="clock" role="timer" aria-live="off">25:00</div>
+  <div class="meter" aria-hidden="true"><i id="bar"></i></div>
+
+  <div class="row">
+    <button type="button" id="start">Start</button>
+    <button type="button" class="secondary" id="reset">Reset</button>
+    <button type="button" class="secondary" id="skip">Skip</button>
+  </div>
+  <p id="status" style="margin-top:14px" aria-live="polite">Ready to focus.</p>
+  <p class="small">Focus sessions completed today: <b id="count">0</b></p>
+
+  <details>
+    <summary>Timer settings</summary>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">
+      <div><label for="cfgFocus">Focus (min)</label><input id="cfgFocus" type="number" min="1" max="180" inputmode="numeric"></div>
+      <div><label for="cfgShort">Short (min)</label><input id="cfgShort" type="number" min="1" max="60" inputmode="numeric"></div>
+      <div><label for="cfgLong">Long (min)</label><input id="cfgLong" type="number" min="1" max="90" inputmode="numeric"></div>
+    </div>
+  </details>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const CFG_KEY = 'daw-pomodoro', DAY_KEY = 'daw-pomodoro-day';
+  const cfg = Object.assign({ focus: 25, short: 5, long: 15 }, DAW.store.get(CFG_KEY, {}));
+  const NAMES = { focus: 'Focus', short: 'Short break', long: 'Long break' };
+  const today = () => new Date().toLocaleDateString('en-CA');
+
+  let day = DAW.store.get(DAY_KEY, { d: today(), n: 0 });
+  if (day.d !== today()) day = { d: today(), n: 0 };
+
+  let mode = 'focus', total = cfg.focus * 60000, left = total, endAt = 0, timer = null;
+  const pad = n => String(n).padStart(2, '0');
+
+  function render() {
+    const s = Math.ceil(left / 1000);
+    const text = pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+    $('clock').textContent = text;
+    $('bar').style.width = (100 * (1 - left / total)) + '%';
+    if (!DAW.theme.embedded) document.title = (timer ? text + ' · ' : '') + 'Pomodoro Focus · DAWAPPS';
+    $('count').textContent = day.n;
+  }
+
+  function paintModes() {
+    document.querySelectorAll('#modes button').forEach(b =>
+      b.setAttribute('aria-pressed', b.dataset.mode === mode ? 'true' : 'false'));
+  }
+
+  function stopTimer() { clearInterval(timer); timer = null; $('start').textContent = 'Start'; }
+
+  function setMode(m) {
+    stopTimer();
+    mode = m;
+    total = left = cfg[m] * 60000;
+    paintModes();
+    $('status').textContent = m === 'focus' ? 'Ready to focus.' : NAMES[m] + ' — step away from the screen.';
+    render();
+  }
+
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, .28, .56].forEach(t => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = 880; g.gain.value = .15;
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + .16);
+      });
+    } catch (e) {}
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  }
+
+  function finish() {
+    const wasFocus = mode === 'focus';
+    beep();
+    if (wasFocus) { day.n++; DAW.store.set(DAY_KEY, day); }
+    const next = wasFocus ? (day.n % 4 === 0 ? 'long' : 'short') : 'focus';
+    setMode(next);
+    $('status').textContent = wasFocus ? 'Nice work! Time for a ' + NAMES[next].toLowerCase() + '.' : 'Break over — ready for the next sprint?';
+  }
+
+  function tick() {
+    left = Math.max(0, endAt - Date.now());   // wall-clock based, so background tabs stay accurate
+    render();
+    if (left <= 0) finish();
+  }
+
+  $('start').addEventListener('click', () => {
+    if (timer) {                               // pause
+      left = Math.max(0, endAt - Date.now());
+      stopTimer();
+      $('start').textContent = 'Resume';
+      $('status').textContent = 'Paused.';
+      render();
+      return;
+    }
+    endAt = Date.now() + left;
+    timer = setInterval(tick, 250);
+    $('start').textContent = 'Pause';
+    $('status').textContent = mode === 'focus' ? 'Focus session running.' : NAMES[mode] + ' running.';
+  });
+  $('reset').addEventListener('click', () => setMode(mode));
+  $('skip').addEventListener('click', () => setMode(mode === 'focus' ? 'short' : 'focus'));
+  $('modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.mode); });
+
+  // Settings
+  const inputs = { focus: $('cfgFocus'), short: $('cfgShort'), long: $('cfgLong') };
+  Object.keys(inputs).forEach(k => {
+    inputs[k].value = cfg[k];
+    inputs[k].addEventListener('change', () => {
+      const max = +inputs[k].max;
+      cfg[k] = Math.min(max, Math.max(1, Math.round(+inputs[k].value) || cfg[k]));
+      inputs[k].value = cfg[k];
+      DAW.store.set(CFG_KEY, cfg);
+      if (!timer && mode === k) setMode(k);
+    });
+  });
+
+  setMode('focus');
+})();
+</script>
+</body>
+</html>

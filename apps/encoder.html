@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Encoder / Decoder · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>Encoder / Decoder</h1>
+  <p>Unicode-safe Base64, URL, HTML entity and hex conversion.</p>
+
+  <label for="mode">Format</label>
+  <select id="mode">
+    <option value="b64">Base64</option>
+    <option value="b64url">Base64 URL-safe</option>
+    <option value="url">URL component</option>
+    <option value="html">HTML entities</option>
+    <option value="hex">Hex (UTF-8 bytes)</option>
+  </select>
+
+  <label for="input">Input</label>
+  <textarea id="input" placeholder="Enter text…" spellcheck="false"></textarea>
+
+  <div class="row">
+    <button type="button" id="enc">Encode ↓</button>
+    <button type="button" id="dec">Decode ↓</button>
+    <button type="button" class="secondary" id="swap">Use output as input</button>
+  </div>
+
+  <label for="output">Output</label>
+  <textarea id="output" readonly spellcheck="false"></textarea>
+  <p class="small error" id="err" role="alert" style="margin:6px 0 0"></p>
+
+  <div class="row">
+    <button type="button" class="secondary" id="copy">Copy output</button>
+    <button type="button" class="secondary" id="clear">Clear</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const te = new TextEncoder();
+  const td = new TextDecoder('utf-8', { fatal: true });
+
+  const toBin = bytes => { let s = ''; bytes.forEach(b => s += String.fromCharCode(b)); return s; };
+  const fromBin = bin => Uint8Array.from(bin, c => c.charCodeAt(0));
+
+  const codecs = {
+    b64: {
+      enc: s => btoa(toBin(te.encode(s))),
+      dec: s => td.decode(fromBin(atob(s.replace(/\s+/g, ''))))
+    },
+    b64url: {
+      enc: s => btoa(toBin(te.encode(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+      dec: s => {
+        let t = s.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        while (t.length % 4) t += '=';
+        return td.decode(fromBin(atob(t)));
+      }
+    },
+    url: { enc: s => encodeURIComponent(s), dec: s => decodeURIComponent(s.replace(/\+/g, ' ')) },
+    html: {
+      enc: s => DAW.esc(s),
+      dec: s => { const t = document.createElement('textarea'); t.innerHTML = s; return t.value; }
+    },
+    hex: {
+      enc: s => Array.from(te.encode(s), b => b.toString(16).padStart(2, '0')).join(' '),
+      dec: s => {
+        const clean = s.replace(/0x/gi, '').replace(/[\s,]+/g, '');
+        if (!/^([0-9a-f]{2})*$/i.test(clean)) throw new Error('Not valid hex');
+        return td.decode(Uint8Array.from(clean.match(/../g) || [], h => parseInt(h, 16)));
+      }
+    }
+  };
+
+  function run(dir) {
+    $('err').textContent = '';
+    try { $('output').value = codecs[$('mode').value][dir]($('input').value); }
+    catch (e) { $('output').value = ''; $('err').textContent = 'Could not ' + dir + 'ode this input — check the format.'; }
+  }
+
+  $('enc').addEventListener('click', () => run('enc'));
+  $('dec').addEventListener('click', () => run('dec'));
+  $('swap').addEventListener('click', () => { $('input').value = $('output').value; $('output').value = ''; $('input').focus(); });
+  $('copy').addEventListener('click', e => { if ($('output').value) DAW.copy($('output').value, e.currentTarget); });
+  $('clear').addEventListener('click', () => { $('input').value = $('output').value = ''; $('err').textContent = ''; });
+})();
+</script>
+</body>
+</html>

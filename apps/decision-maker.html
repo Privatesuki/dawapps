@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Decision Maker · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  #answer { min-height: 92px; display: grid; place-items: center; text-align: center; font-size: 28px; font-weight: 650; letter-spacing: -.01em; }
+  #answer.rolling { color: var(--text-secondary); }
+  #history { margin: 8px 0 0; padding-left: 20px; color: var(--text-secondary); font-size: 14px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Random Decision Maker</h1>
+  <p>Can’t decide? Enter one option per line and let chance choose.</p>
+
+  <label for="options">Options</label>
+  <textarea id="options" placeholder="Pizza&#10;Burger&#10;Noodles" style="min-height:130px"></textarea>
+  <label class="check"><input type="checkbox" id="noRepeat"> Don’t pick the same option twice in a row</label>
+
+  <div class="row">
+    <button type="button" id="pick">Pick one</button>
+    <button type="button" class="secondary" id="shuffle">Shuffle order</button>
+  </div>
+  <div class="row">
+    <button type="button" class="secondary" id="coin">Flip a coin</button>
+    <button type="button" class="secondary" id="dice">Roll a die</button>
+  </div>
+
+  <div class="output" id="answer" aria-live="polite">Your result will appear here.</div>
+
+  <div id="historyWrap" hidden>
+    <h3>Recent results</h3>
+    <ol id="history"></ol>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const KEY = 'daw-decision-options';
+  const ans = $('answer');
+  let last = null, busy = false;
+
+  function rnd(n) {
+    const limit = Math.floor(2 ** 32 / n) * n, buf = new Uint32Array(1);
+    let x; do { crypto.getRandomValues(buf); x = buf[0]; } while (x >= limit);
+    return x % n;
+  }
+  const items = () => $('options').value.split('\n').map(s => s.trim()).filter(Boolean);
+
+  function log(text) {
+    $('historyWrap').hidden = false;
+    const li = document.createElement('li');
+    li.textContent = text;
+    $('history').prepend(li);
+    while ($('history').children.length > 8) $('history').lastChild.remove();
+  }
+
+  // Quick "slot machine" shuffle, then the final result.
+  function reveal(candidates, final) {
+    if (busy) return;
+    busy = true;
+    let n = 0;
+    ans.classList.add('rolling');
+    const t = setInterval(() => {
+      ans.textContent = candidates[rnd(candidates.length)];
+      if (++n >= 12) {
+        clearInterval(t);
+        ans.classList.remove('rolling');
+        ans.textContent = final;
+        last = final;
+        log(final);
+        busy = false;
+      }
+    }, 55);
+  }
+
+  $('pick').addEventListener('click', () => {
+    const list = items();
+    if (!list.length) { ans.textContent = 'Please enter at least one option.'; return; }
+    let pool = list;
+    if ($('noRepeat').checked && list.length > 1) pool = list.filter(x => x !== last);
+    reveal(list, pool[rnd(pool.length)]);
+  });
+
+  $('shuffle').addEventListener('click', () => {
+    const list = items();
+    if (list.length < 2) { ans.textContent = 'Enter at least two options to shuffle.'; return; }
+    for (let i = list.length - 1; i > 0; i--) { const j = rnd(i + 1); [list[i], list[j]] = [list[j], list[i]]; }
+    ans.innerHTML = '';
+    const ol = document.createElement('ol');
+    ol.style.cssText = 'margin:0;padding-left:28px;text-align:left;font-size:18px';
+    list.forEach(x => { const li = document.createElement('li'); li.textContent = x; ol.appendChild(li); });
+    ans.appendChild(ol);
+  });
+
+  $('coin').addEventListener('click', () => reveal(['Heads', 'Tails'], ['Heads', 'Tails'][rnd(2)]));
+  $('dice').addEventListener('click', () => reveal(['1', '2', '3', '4', '5', '6'], String(rnd(6) + 1)));
+
+  $('options').value = DAW.store.get(KEY, '');
+  $('options').addEventListener('input', DAW.debounce(() => DAW.store.set(KEY, $('options').value), 300));
+})();
+</script>
+</body>
+</html>

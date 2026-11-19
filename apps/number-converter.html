@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Number Base · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>Number Base Converter</h1>
+  <p>Convert whole numbers between binary, octal, decimal, hex and any base up to 36. Arbitrarily large values are supported.</p>
+
+  <div class="grid2">
+    <div>
+      <label for="num">Number</label>
+      <input id="num" value="255" autocomplete="off" spellcheck="false" autocapitalize="off">
+    </div>
+    <div>
+      <label for="base">Input base</label>
+      <select id="base">
+        <option value="10" selected>Decimal (10)</option>
+        <option value="2">Binary (2)</option>
+        <option value="8">Octal (8)</option>
+        <option value="16">Hexadecimal (16)</option>
+        <option value="custom">Custom…</option>
+      </select>
+    </div>
+  </div>
+  <div id="customBox" hidden>
+    <label for="customBase">Custom input base (2–36)</label>
+    <input id="customBase" type="number" min="2" max="36" value="36" inputmode="numeric">
+  </div>
+
+  <p class="small error" id="err" role="alert" style="margin-top:10px"></p>
+
+  <div id="results">
+    <div class="kv"><b>Binary</b><code id="r2">—</code><button type="button" class="secondary small" data-copy="r2">Copy</button></div>
+    <div class="kv"><b>Octal</b><code id="r8">—</code><button type="button" class="secondary small" data-copy="r8">Copy</button></div>
+    <div class="kv"><b>Decimal</b><code id="r10">—</code><button type="button" class="secondary small" data-copy="r10">Copy</button></div>
+    <div class="kv"><b>Hex</b><code id="r16">—</code><button type="button" class="secondary small" data-copy="r16">Copy</button></div>
+  </div>
+
+  <h3>Any other base</h3>
+  <div class="grid2">
+    <div><label for="outBase">Output base (2–36)</label><input id="outBase" type="number" min="2" max="36" value="32" inputmode="numeric"></div>
+    <div><label>&nbsp;</label>
+      <div class="kv" style="margin-top:0"><code id="rc">—</code><button type="button" class="secondary small" data-copy="rc">Copy</button></div>
+    </div>
+  </div>
+
+  <p class="small" id="bits" style="margin-top:14px"></p>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const DIGITS = '0123456789abcdefghijklmnopqrstuvwxyz';
+
+  function inBase() {
+    return $('base').value === 'custom' ? Math.round(+$('customBase').value) : +$('base').value;
+  }
+
+  function parse(text, base) {
+    let s = text.trim().toLowerCase().replace(/[\s_,]/g, '');
+    let neg = false;
+    if (s[0] === '-') { neg = true; s = s.slice(1); } else if (s[0] === '+') s = s.slice(1);
+    // Optional prefixes that match the chosen base.
+    const pre = { 2: '0b', 8: '0o', 16: '0x' }[base];
+    if (pre && s.startsWith(pre)) s = s.slice(2);
+    if (!s) throw new Error('empty');
+    let v = 0n; const B = BigInt(base);
+    for (const ch of s) {
+      const d = DIGITS.indexOf(ch);
+      if (d < 0 || d >= base) throw new Error(`"${ch}" is not a valid base-${base} digit`);
+      v = v * B + BigInt(d);
+    }
+    return neg ? -v : v;
+  }
+
+  const group = (s, n) => s.replace(new RegExp('\\B(?=(.{' + n + '})+$)', 'g'), ' ');
+  const out = (v, b) => v.toString(b);
+
+  function clear(msg) {
+    ['r2', 'r8', 'r10', 'r16', 'rc'].forEach(id => { $(id).textContent = '—'; });
+    $('bits').textContent = '';
+    $('err').textContent = msg || '';
+  }
+
+  function run() {
+    $('customBox').hidden = $('base').value !== 'custom';
+    const b = inBase();
+    if (!(b >= 2 && b <= 36)) return clear('Input base must be between 2 and 36.');
+    if (!$('num').value.trim()) return clear('');
+    let v;
+    try { v = parse($('num').value, b); }
+    catch (e) { return clear(e.message === 'empty' ? '' : e.message); }
+    $('err').textContent = '';
+
+    const sign = v < 0n ? '-' : '', a = v < 0n ? -v : v;
+    $('r2').textContent = sign + group(out(a, 2), 4);
+    $('r8').textContent = sign + out(a, 8);
+    $('r10').textContent = sign + group(out(a, 10), 3).replace(/ /g, ',');
+    $('r16').textContent = sign + out(a, 16).toUpperCase();
+
+    const ob = Math.round(+$('outBase').value);
+    $('rc').textContent = ob >= 2 && ob <= 36 ? sign + out(a, ob).toUpperCase() : 'Base must be 2–36';
+
+    const bitLen = a === 0n ? 1 : out(a, 2).length;
+    const bytes = Math.ceil(bitLen / 8);
+    $('bits').textContent = `${bitLen} bit${bitLen === 1 ? '' : 's'} · ${bytes} byte${bytes === 1 ? '' : 's'} (unsigned magnitude)`;
+  }
+
+  // Switching input base keeps the same value: re-express it in the newly chosen base.
+  let prevBase = 10;
+  $('base').addEventListener('change', () => {
+    const next = inBase();
+    if ($('num').value.trim() && next >= 2 && next <= 36) {
+      try {
+        const v = parse($('num').value, prevBase);
+        $('num').value = out(v, next);
+      } catch (e) { /* keep text as typed */ }
+    }
+    if (next >= 2 && next <= 36) prevBase = next;
+    run();
+  });
+  $('customBase').addEventListener('input', () => {
+    const b = inBase(); if (b >= 2 && b <= 36) prevBase = b; run();
+  });
+  $('num').addEventListener('input', run);
+  $('outBase').addEventListener('input', run);
+  $('results').addEventListener('click', e => {
+    const b = e.target.closest('button[data-copy]'); if (!b) return;
+    const t = $(b.dataset.copy).textContent;
+    if (t && t !== '—') DAW.copy(t.replace(/ /g, ''), b);
+  });
+  document.querySelector('[data-copy="rc"]').addEventListener('click', () => {
+    const t = $('rc').textContent; if (t && t !== '—' && !/^Base/.test(t)) DAW.copy(t, document.querySelector('[data-copy="rc"]'));
+  });
+
+  run();
+})();
+</script>
+</body>
+</html>

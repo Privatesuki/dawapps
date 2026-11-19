@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Countdown · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .ev { margin-top: 12px; padding: 14px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; }
+  .ev.past { opacity: .75; }
+  .ev-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .ev-name { font-weight: 650; overflow-wrap: anywhere; }
+  .ev-date { font-size: 13px; color: var(--text-secondary); }
+  .units { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; text-align: center; }
+  .unit { padding: 8px 4px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; }
+  .unit strong { display: block; font-size: 24px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .unit span { font-size: 12px; color: var(--text-secondary); }
+  .done { margin-top: 10px; font-weight: 600; color: var(--success); }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Event Countdown</h1>
+  <p>Track as many events as you like. They are saved on this device.</p>
+
+  <form id="form" autocomplete="off">
+    <div class="grid2">
+      <div><label for="name">Event name</label><input id="name" placeholder="Product launch" maxlength="60"></div>
+      <div><label for="when">Date &amp; time</label><input id="when" type="datetime-local" required></div>
+    </div>
+    <div class="row"><button type="submit">Add countdown</button></div>
+    <p class="small error" id="err" role="alert" style="margin-top:8px"></p>
+  </form>
+
+  <div id="list" aria-live="off"></div>
+  <p class="small center" id="empty">No events yet — add your first one above.</p>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const KEY = 'daw-countdown';
+  let events = DAW.store.get(KEY, []);
+  if (!Array.isArray(events)) events = [];
+
+  const pad = n => String(n).padStart(2, '0');
+  const fmtDate = t => new Date(t).toLocaleString(document.documentElement.lang || undefined, { dateStyle: 'full', timeStyle: 'short' });
+  const save = () => DAW.store.set(KEY, events);
+
+  function parts(ms) {
+    const s = Math.floor(ms / 1000);
+    return { d: Math.floor(s / 86400), h: Math.floor(s / 3600) % 24, m: Math.floor(s / 60) % 60, s: s % 60 };
+  }
+
+  function render() {
+    const list = $('list');
+    list.innerHTML = '';
+    events.sort((a, b) => a.t - b.t);
+    $('empty').hidden = events.length > 0;
+    events.forEach(ev => {
+      const card = document.createElement('article');
+      card.className = 'ev';
+      card.dataset.id = ev.id;
+      card.innerHTML =
+        '<div class="ev-head"><div><div class="ev-name"></div><div class="ev-date"></div></div>' +
+        '<button type="button" class="danger small" aria-label="Delete event">✕</button></div>' +
+        '<div class="units"><div class="unit"><strong data-u="d">0</strong><span>days</span></div>' +
+        '<div class="unit"><strong data-u="h">00</strong><span>hours</span></div>' +
+        '<div class="unit"><strong data-u="m">00</strong><span>minutes</span></div>' +
+        '<div class="unit"><strong data-u="s">00</strong><span>seconds</span></div></div>' +
+        '<div class="done" hidden></div>';
+      card.querySelector('.ev-name').textContent = ev.n || 'Untitled event';
+      card.querySelector('.ev-date').textContent = fmtDate(ev.t);
+      card.querySelector('button').addEventListener('click', () => {
+        events = events.filter(e => e.id !== ev.id); save(); render();
+      });
+      list.appendChild(card);
+    });
+    tick();
+  }
+
+  function tick() {
+    const now = Date.now();
+    document.querySelectorAll('.ev').forEach(card => {
+      const ev = events.find(e => e.id === card.dataset.id); if (!ev) return;
+      const diff = ev.t - now, past = diff <= 0;
+      const p = parts(Math.abs(diff));
+      card.classList.toggle('past', past);
+      card.querySelector('[data-u="d"]').textContent = p.d;
+      card.querySelector('[data-u="h"]').textContent = pad(p.h);
+      card.querySelector('[data-u="m"]').textContent = pad(p.m);
+      card.querySelector('[data-u="s"]').textContent = pad(p.s);
+      const done = card.querySelector('.done');
+      done.hidden = !past;
+      if (past) done.textContent = '🎉 Started ' + (p.d ? p.d + 'd ' : '') + p.h + 'h ' + p.m + 'm ago';
+    });
+  }
+
+  $('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const t = new Date($('when').value).getTime();
+    if (!Number.isFinite(t)) { $('err').textContent = 'Choose a valid date and time.'; return; }
+    $('err').textContent = '';
+    events.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), n: $('name').value.trim(), t });
+    save();
+    $('name').value = '';
+    render();
+  });
+
+  // Default the picker to tomorrow 09:00 so the form is ready to submit.
+  const d = new Date(Date.now() + 864e5); d.setHours(9, 0, 0, 0);
+  $('when').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+
+  render();
+  window.addEventListener('daw-lang', render);
+  setInterval(tick, 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+})();
+</script>
+</body>
+</html>

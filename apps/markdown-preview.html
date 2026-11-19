@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Markdown Preview · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .md { line-height: 1.65; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 18px 0 8px; line-height: 1.25; }
+  .md h1 { font-size: 24px; } .md h2 { font-size: 20px; } .md h3 { font-size: 17px; }
+  .md h4, .md h5, .md h6 { font-size: 15px; }
+  .md p { color: var(--text-primary); margin: 0 0 12px; }
+  .md code { padding: 2px 6px; font-size: .9em; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 5px; }
+  .md pre { margin: 0 0 12px; padding: 12px; overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; }
+  .md pre code { padding: 0; border: 0; background: none; }
+  .md blockquote { margin: 0 0 12px; padding: 2px 14px; color: var(--text-secondary); border-left: 3px solid var(--accent); }
+  .md blockquote p { color: inherit; }
+  .md ul, .md ol { margin: 0 0 12px; padding-left: 24px; }
+  .md hr { margin: 18px 0; }
+  .md a { color: var(--accent); }
+  #src { min-height: 220px; font-family: var(--mono); font-size: 14px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Markdown Previewer</h1>
+  <p>Headings, bold, italic, strikethrough, links, lists, quotes, code and rules. Rendered safely — raw HTML is escaped.</p>
+
+  <label for="src">Markdown</label>
+  <textarea id="src" spellcheck="false"></textarea>
+
+  <h2>Preview</h2>
+  <div class="output md" id="preview"></div>
+
+  <div class="row">
+    <button type="button" id="copyHtml">Copy HTML</button>
+    <button type="button" class="secondary" id="copyMd">Copy Markdown</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const SAMPLE = `# Hello, Markdown!
+
+Write **bold**, *italic*, ~~strikethrough~~ and \`inline code\`.
+
+## A list
+- Item one
+- Item two with a [link](https://example.com)
+
+1. First
+2. Second
+
+> A quote worth remembering.
+
+\`\`\`
+const hello = "world";
+\`\`\`
+
+---
+`;
+
+  const esc = DAW.esc;
+
+  function inline(text) {
+    const codes = [];
+    let s = esc(text).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return '\u0000' + (codes.length - 1) + '\u0000'; });
+    s = s
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+        const raw = url.replace(/&amp;/g, '&');
+        return /^(https?:\/\/|mailto:|\/|#|\.{0,2}\/)/i.test(raw)
+          ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : m;
+      })
+      .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_, a, b) => `<strong>${a || b}</strong>`)
+      .replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\*)/g, '$1<em>$2</em>')
+      .replace(/(^|[^_\w])_([^_\s][^_]*?)_(?![_\w])/g, '$1<em>$2</em>')
+      .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[+i]}</code>`);
+  }
+
+  function render(md) {
+    const lines = md.replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (/^```/.test(line)) {                                   // fenced code
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+        i++;
+        out.push('<pre><code>' + esc(buf.join('\n')) + '</code></pre>');
+        continue;
+      }
+      if (!line.trim()) { i++; continue; }
+
+      let m;
+      if ((m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) {       // heading
+        out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);
+        i++; continue;
+      }
+      if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+
+      if (/^>\s?/.test(line)) {                                   // blockquote
+        const buf = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ''));
+        out.push('<blockquote><p>' + buf.map(inline).join('<br>') + '</p></blockquote>');
+        continue;
+      }
+      if (/^\s*[-*+]\s+/.test(line)) {                            // unordered list
+        const items = [];
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push('<li>' + inline(lines[i++].replace(/^\s*[-*+]\s+/, '')) + '</li>');
+        out.push('<ul>' + items.join('') + '</ul>');
+        continue;
+      }
+      if (/^\s*\d+[.)]\s+/.test(line)) {                          // ordered list
+        const items = [];
+        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push('<li>' + inline(lines[i++].replace(/^\s*\d+[.)]\s+/, '')) + '</li>');
+        out.push('<ol>' + items.join('') + '</ol>');
+        continue;
+      }
+      const para = [];                                            // paragraph
+      while (i < lines.length && lines[i].trim() && !/^(```|#{1,6}\s|>|\s*[-*+]\s|\s*\d+[.)]\s)/.test(lines[i]) && !/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(lines[i])) para.push(lines[i++]);
+      if (!para.length) para.push(lines[i++]);
+      out.push('<p>' + para.map(inline).join('<br>') + '</p>');
+    }
+    return out.join('\n');
+  }
+
+  const src = $('src'), preview = $('preview');
+  const KEY = 'daw-markdown-draft';
+  const save = DAW.debounce(() => DAW.store.set(KEY, src.value), 400);
+  function update() { preview.innerHTML = render(src.value); save(); }
+
+  src.value = DAW.store.get(KEY, SAMPLE);
+  src.addEventListener('input', update);
+  $('copyHtml').addEventListener('click', e => DAW.copy(preview.innerHTML, e.currentTarget));
+  $('copyMd').addEventListener('click', e => DAW.copy(src.value, e.currentTarget));
+  update();
+})();
+</script>
+</body>
+</html>

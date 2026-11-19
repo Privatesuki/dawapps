@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Image Compressor · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .drop { display: grid; place-items: center; gap: 4px; min-height: 120px; margin-top: 12px; padding: 16px; text-align: center; color: var(--text-secondary);
+    border: 2px dashed var(--border-color); border-radius: 12px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--bg-primary); }
+  .drop input { display: none; }
+  .preview { margin-top: 14px; padding: 10px; text-align: center; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; }
+  .preview img { max-width: 100%; max-height: 360px; border-radius: 6px; }
+  .good { color: var(--success); }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Image Compressor</h1>
+  <p>Resize and compress photos right in your browser. Nothing is uploaded.</p>
+
+  <label class="drop" id="drop" for="file">
+    <strong style="color:var(--text-primary)">Choose an image</strong>
+    <span class="small">or drop it here · JPEG, PNG, WebP, GIF, BMP</span>
+    <input type="file" id="file" accept="image/*">
+  </label>
+
+  <div id="panel" hidden>
+    <div class="grid2">
+      <div><label for="fmt">Output format</label>
+        <select id="fmt"><option value="image/jpeg">JPEG</option><option value="image/webp">WebP</option><option value="image/png">PNG (lossless)</option></select>
+      </div>
+      <div><label for="maxw">Max width (px)</label><input id="maxw" type="number" min="16" max="16000" value="1600" inputmode="numeric"></div>
+    </div>
+    <div id="qBox">
+      <label for="quality">Quality: <b id="qVal">80</b>%</label>
+      <input type="range" id="quality" min="10" max="100" value="80">
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span>Original</span><strong id="sOrig">–</strong></div>
+      <div class="stat"><span>Compressed</span><strong id="sNew">–</strong></div>
+      <div class="stat"><span>Saved</span><strong id="sSave">–</strong></div>
+    </div>
+    <p class="small" id="dims" style="margin-top:10px"></p>
+    <p class="small error" id="err" role="alert"></p>
+
+    <div class="preview"><img id="preview" alt="Compressed preview"></div>
+    <div class="row">
+      <button type="button" id="download" disabled>Download</button>
+      <button type="button" class="secondary" id="reset">Choose another</button>
+    </div>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  let source = null, srcFile = null, outBlob = null, outUrl = null, token = 0;
+
+  const kb = n => n >= 1048576 ? (n / 1048576).toFixed(2) + ' MB' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+  const EXT = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png' };
+
+  async function load(file) {
+    if (!file || !file.type.startsWith('image/')) { $('err').textContent = 'Please choose an image file.'; $('panel').hidden = false; return; }
+    $('err').textContent = '';
+    try {
+      if (source && source.close) source.close();
+      source = window.createImageBitmap ? await createImageBitmap(file) : await legacyLoad(file);   // honours EXIF rotation
+    } catch (e) {
+      $('panel').hidden = false;
+      $('err').textContent = 'This browser could not decode that image.';
+      return;
+    }
+    srcFile = file;
+    $('panel').hidden = false;
+    $('sOrig').textContent = kb(file.size);
+    const w = source.width;
+    $('maxw').value = Math.min(w, +$('maxw').value || w, 1600) || w;
+    if (file.type === 'image/png') $('fmt').value = 'image/webp';
+    run();
+  }
+
+  function legacyLoad(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(), url = URL.createObjectURL(file);
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = rej; img.src = url;
+    });
+  }
+
+  function run() {
+    if (!source) return;
+    const my = ++token;
+    const type = $('fmt').value;
+    $('qBox').hidden = type === 'image/png';
+    $('qVal').textContent = $('quality').value;
+
+    const maxW = Math.max(16, Math.round(+$('maxw').value) || source.width);
+    const scale = Math.min(1, maxW / source.width);
+    const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (type === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }   // JPEG has no transparency
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(source, 0, 0, w, h);
+
+    canvas.toBlob(blob => {
+      if (my !== token) return;                       // a newer run superseded this one
+      if (!blob || (type !== blob.type && blob.type === 'image/png' && type !== 'image/png')) {
+        $('err').textContent = (EXT[type] || 'That').toUpperCase() + ' output isn’t supported by this browser. Try JPEG or PNG.';
+        $('download').disabled = true; return;
+      }
+      $('err').textContent = '';
+      outBlob = blob;
+      if (outUrl) URL.revokeObjectURL(outUrl);
+      outUrl = URL.createObjectURL(blob);
+      $('preview').src = outUrl;
+      $('sNew').textContent = kb(blob.size);
+      const saved = Math.round((1 - blob.size / srcFile.size) * 100);
+      $('sSave').textContent = saved + '%';
+      $('sSave').className = saved > 0 ? 'good' : 'error';
+      $('dims').textContent = `${source.width} × ${source.height} → ${w} × ${h} px` +
+        (saved <= 0 ? ' · The result is larger than the original; lower the quality or width, or keep the original.' : '');
+      $('download').disabled = false;
+    }, type, +$('quality').value / 100);
+  }
+
+  const runSoon = DAW.debounce(run, 150);
+  $('quality').addEventListener('input', () => { $('qVal').textContent = $('quality').value; runSoon(); });
+  $('maxw').addEventListener('input', runSoon);
+  $('fmt').addEventListener('change', run);
+  $('file').addEventListener('change', () => { load($('file').files[0]); });
+  $('reset').addEventListener('click', () => { $('file').value = ''; $('file').click(); });
+
+  $('download').addEventListener('click', () => {
+    if (!outBlob) return;
+    const base = (srcFile.name || 'image').replace(/\.[^.]+$/, '');
+    DAW.download(outBlob, `${base}-compressed.${EXT[outBlob.type] || 'jpg'}`);
+  });
+
+  const drop = $('drop');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+})();
+</script>
+</body>
+</html>

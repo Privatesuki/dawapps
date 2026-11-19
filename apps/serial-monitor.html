@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Serial &amp; BLE Monitor · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .app { max-width: 860px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; font-size: 13px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--bg-primary); }
+  .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text-secondary); }
+  .pill.on::before { background: var(--success); }
+  .pill.busy::before { background: #eab308; }
+  #log { height: 320px; overflow: auto; margin-top: 12px; padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; direction: ltr; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .ts { color: var(--text-secondary); margin-inline-end: 8px; }
+  #log .tx { color: var(--accent); }
+  #log .sys { color: var(--text-secondary); font-style: italic; }
+  #log .err { color: var(--danger, #dc2626); }
+  #plot { width: 100%; height: 130px; margin-top: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; display: block; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+  .opts label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+  .notice { margin-top: 12px; padding: 10px 12px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
+  #send { flex: 1 1 180px; font-family: var(--mono); direction: ltr; text-align: left; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; font-weight: 600; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Serial &amp; BLE Monitor</h1>
+  <p>Stream live logs from a USB serial device (Web Serial) or a Bluetooth LE UART (Web Bluetooth).</p>
+
+  <div class="notice" id="support" hidden role="status"></div>
+
+  <div class="seg" id="mode" role="group" aria-label="Connection type">
+    <button type="button" data-m="serial" aria-pressed="true">USB Serial</button>
+    <button type="button" data-m="ble" aria-pressed="false">Bluetooth LE</button>
+  </div>
+
+  <div id="serialOpts">
+    <div class="grid2">
+      <div><label for="baud">Baud rate</label>
+        <select id="baud"></select></div>
+      <div><label for="dbits">Data bits</label><select id="dbits"><option>8</option><option>7</option></select></div>
+      <div><label for="parity">Parity</label><select id="parity"><option value="none">None</option><option value="even">Even</option><option value="odd">Odd</option></select></div>
+      <div><label for="sbits">Stop bits</label><select id="sbits"><option>1</option><option>2</option></select></div>
+    </div>
+  </div>
+
+  <div id="bleOpts" hidden>
+    <div class="grid2">
+      <div><label for="preset">Service profile</label>
+        <select id="preset">
+          <option value="nus">Nordic UART (ESP32, nRF52, Adafruit)</option>
+          <option value="hm10">HM-10 / CC2541 (0xFFE0)</option>
+          <option value="custom">Custom UUIDs</option>
+        </select></div>
+    </div>
+    <div class="grid2" id="customUuid" hidden>
+      <div><label for="uSvc">Service UUID</label><input id="uSvc" translate="no" placeholder="0000ffe0-0000-1000-8000-00805f9b34fb"></div>
+      <div><label for="uTx">Notify characteristic (device → browser)</label><input id="uTx" translate="no" placeholder="0000ffe1-…"></div>
+      <div><label for="uRx">Write characteristic (browser → device)</label><input id="uRx" translate="no" placeholder="0000ffe1-…"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px">
+    <button type="button" id="connect">Connect</button>
+    <button type="button" class="secondary" id="disconnect" disabled>Disconnect</button>
+    <button type="button" class="secondary" id="reset" hidden title="Pulse DTR/RTS to reset the board">Reset board</button>
+    <span class="pill" id="status">Disconnected</span>
+  </div>
+  <p class="small error" id="err" role="alert" style="margin-top:8px"></p>
+
+  <div class="opts">
+    <label><input type="checkbox" id="oTime" checked> Timestamps</label>
+    <label><input type="checkbox" id="oHex"> Hex view</label>
+    <label><input type="checkbox" id="oScroll" checked> Auto-scroll</label>
+    <label><input type="checkbox" id="oPlot" checked> Plot numbers</label>
+    <label><input type="checkbox" id="oPause"> Pause display</label>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="filter" type="search" placeholder="Filter lines…" aria-label="Filter lines" style="flex:1 1 160px" translate="no">
+    <button type="button" class="secondary" id="clear">Clear</button>
+    <button type="button" class="secondary" id="copyLog">Copy</button>
+    <button type="button" class="secondary" id="dlLog">Download</button>
+  </div>
+
+  <div id="log" role="log" aria-live="off" tabindex="0"></div>
+  <canvas id="plot" width="800" height="130" aria-label="Live plot of numeric values"></canvas>
+
+  <div class="stats" style="margin-top:12px">
+    <div class="stat"><b id="sBytes">0</b><span>bytes</span></div>
+    <div class="stat"><b id="sLines">0</b><span>lines</span></div>
+    <div class="stat"><b id="sRate">0</b><span>bytes/s</span></div>
+  </div>
+
+  <div class="row" style="margin-top:14px">
+    <input id="send" placeholder="Type a command and press Enter" aria-label="Message to send" autocomplete="off" translate="no">
+    <select id="eol" aria-label="Line ending">
+      <option value="">No line ending</option><option value="\n" selected>Newline (\n)</option><option value="\r">Carriage return (\r)</option><option value="\r\n">Both (\r\n)</option>
+    </select>
+    <label style="margin:0;display:inline-flex;gap:6px;align-items:center"><input type="checkbox" id="sHex"> Hex</label>
+    <button type="button" id="sendBtn" disabled>Send</button>
+  </div>
+
+  <details>
+    <summary>Tips</summary>
+    <p class="small">Web Serial and Web Bluetooth work in Chrome, Edge and Opera on desktop (and Chrome on Android for Bluetooth), over HTTPS or localhost. Safari and Firefox do not support them. Close the Arduino IDE serial monitor first — a port can only be opened by one program.</p>
+    <p class="small">Plot: every number on a line becomes its own series, for example in comma-separated or labelled readings.</p>
+    <p class="small" translate="no"><code>23.5,41.2</code> · <code>temp:23.5 hum:41</code></p>
+  </details>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const KEY = 'daw-serial';
+  const cfg = Object.assign({ mode: 'serial', baud: '115200', dbits: '8', parity: 'none', sbits: '1', preset: 'nus', eol: '\\n', hist: [] }, DAW.store.get(KEY, {}));
+  const save = () => DAW.store.set(KEY, cfg);
+
+  const BAUDS = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 74880, 115200, 230400, 460800, 921600, 1000000, 2000000];
+  $('baud').innerHTML = BAUDS.map(b => `<option>${b}</option>`).join('');
+  $('baud').setAttribute('translate', 'no');
+  ['baud', 'dbits', 'parity', 'sbits', 'preset', 'eol'].forEach(k => { if ([...$(k).options].some(o => o.value === String(cfg[k]) || o.text === String(cfg[k]))) $(k).value = cfg[k]; });
+
+  const BLE = {
+    nus:  { svc: '6e400001-b5a3-f393-e0a9-e50e24dcca9e', tx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e', rx: '6e400002-b5a3-f393-e0a9-e50e24dcca9e' },
+    hm10: { svc: 0xffe0, tx: 0xffe1, rx: 0xffe1 }
+  };
+
+  const hasSerial = 'serial' in navigator, hasBle = 'bluetooth' in navigator;
+  let mode = cfg.mode === 'ble' ? 'ble' : 'serial';
+  let conn = null;                       // { write(bytes), close() }
+  let dec = new TextDecoder('utf-8', { fatal: false });
+  let bytes = 0, lines = 0, rateBytes = 0;
+  const buf = [];                        // ring buffer of {t, html-ready parts}
+  const MAX = 2000;
+  let partial = '', partialHex = '', dirty = false;
+  const series = [];                     // plotted values: array of arrays
+  const MAXPTS = 300;
+
+  /* ---------- UI helpers ---------- */
+  function setStatus(text, cls) { const s = $('status'); s.textContent = text; s.className = 'pill ' + (cls || ''); }
+  function showErr(m) { $('err').textContent = m || ''; }
+  function applyMode() {
+    $('serialOpts').hidden = mode !== 'serial';
+    $('bleOpts').hidden = mode !== 'ble';
+    $('customUuid').hidden = $('preset').value !== 'custom';
+    document.querySelectorAll('#mode button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === mode ? 'true' : 'false'));
+    const ok = mode === 'serial' ? hasSerial : hasBle, n = $('support');
+    n.hidden = ok;
+    if (!ok) n.textContent = mode === 'serial'
+      ? 'This browser does not support Web Serial. Use Chrome, Edge or Opera on a desktop computer.'
+      : 'This browser does not support Web Bluetooth. Use Chrome or Edge (desktop or Android) over HTTPS.';
+    $('connect').disabled = !ok || !!conn;
+    $('reset').hidden = mode !== 'serial' || !conn;
+  }
+  $('mode').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || conn) return;
+    mode = b.dataset.m; cfg.mode = mode; save(); applyMode();
+  });
+  $('preset').addEventListener('change', () => { cfg.preset = $('preset').value; save(); applyMode(); });
+  ['baud', 'dbits', 'parity', 'sbits', 'eol'].forEach(k => $(k).addEventListener('change', () => { cfg[k] = $(k).value; save(); }));
+
+  /* ---------- log ---------- */
+  const two = n => String(n).padStart(2, '0');
+  const stamp = d => `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+  function push(kind, text) {
+    buf.push({ k: kind, t: new Date(), x: text });
+    if (buf.length > MAX) buf.splice(0, buf.length - MAX);
+    dirty = true;
+  }
+  function render() {
+    if (!dirty) return; dirty = false;
+    if ($('oPause').checked) return;
+    const f = $('filter').value.toLowerCase(), log = $('log');
+    const frag = document.createDocumentFragment();
+    buf.forEach(r => {
+      if (f && !r.x.toLowerCase().includes(f)) return;
+      const div = document.createElement('div');
+      if ($('oTime').checked) { const ts = document.createElement('span'); ts.className = 'ts'; ts.textContent = stamp(r.t); div.appendChild(ts); }
+      const sp = document.createElement('span'); sp.className = r.k === 'tx' ? 'tx' : r.k === 'sys' ? 'sys' : r.k === 'err' ? 'err' : '';
+      sp.textContent = (r.k === 'tx' ? '→ ' : '') + r.x; sp.setAttribute('translate', 'no');
+      if (r.k === 'sys' || r.k === 'err') sp.removeAttribute('translate');
+      div.appendChild(sp); frag.appendChild(div);
+    });
+    log.replaceChildren(frag);
+    if ($('oScroll').checked) log.scrollTop = log.scrollHeight;
+  }
+  ['oTime', 'oHex', 'oPause', 'filter'].forEach(id => $(id).addEventListener('input', () => { dirty = true; }));
+  $('oHex').addEventListener('change', () => { partial = ''; });
+  $('clear').addEventListener('click', () => { buf.length = 0; bytes = lines = 0; series.length = 0; partial = ''; dirty = true; stats(); drawPlot(); });
+  const plain = () => buf.map(r => (r.k === 'tx' ? '> ' : '') + `[${stamp(r.t)}] ` + r.x).join('\n');
+  $('copyLog').addEventListener('click', () => DAW.copy(plain(), $('copyLog')));
+  $('dlLog').addEventListener('click', () => DAW.download('serial-log-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt', plain(), 'text/plain'));
+
+  function stats() { $('sBytes').textContent = bytes; $('sLines').textContent = lines; }
+  setInterval(() => { $('sRate').textContent = rateBytes; rateBytes = 0; }, 1000);
+
+  /* ---------- incoming data ---------- */
+  function onData(u8) {
+    bytes += u8.length; rateBytes += u8.length;
+    if ($('oHex').checked) {
+      const hex = Array.from(u8, b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      for (let i = 0; i < hex.length; i += 48) push('rx', hex.slice(i, i + 48));
+      lines++; stats(); return;
+    }
+    partial += dec.decode(u8, { stream: true });
+    const parts = partial.split(/\r\n|\n|\r/);
+    partial = parts.pop();
+    parts.forEach(l => { lines++; push('rx', l); plot(l); });
+    if (partial.length > 4000) { push('rx', partial); partial = ''; }   // never-ending line without terminator
+    stats();
+  }
+  // flush a trailing partial line shortly after data stops (prompts like "> " never end in a newline)
+  setInterval(() => { if (partial && Date.now() - lastRx > 400 && !$('oHex').checked) { push('rx', partial); lines++; plot(partial); partial = ''; stats(); } }, 250);
+  let lastRx = 0;
+  const _onData = onData; onData = function (u8) { lastRx = Date.now(); _onData(u8); };
+
+  /* ---------- plot ---------- */
+  const COLORS = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#8b5cf6', '#06b6d4'];
+  function plot(line) {
+    if (!$('oPlot').checked) return;
+    const m = line.match(/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g);
+    if (!m || m.length > 6) return;
+    m.forEach((v, i) => { (series[i] = series[i] || []).push(Number(v)); if (series[i].length > MAXPTS) series[i].shift(); });
+  }
+  function drawPlot() {
+    const c = $('plot'), g = c.getContext('2d'), w = c.width, h = c.height;
+    const css = getComputedStyle(document.documentElement);
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = css.getPropertyValue('--border-color').trim() || '#ccc'; g.lineWidth = 1;
+    g.strokeRect(0.5, 0.5, w - 1, h - 1);
+    const all = series.flat(); if (!all.length) return;
+    let lo = Math.min(...all), hi = Math.max(...all); if (lo === hi) { lo -= 1; hi += 1; }
+    g.fillStyle = css.getPropertyValue('--text-secondary').trim() || '#666'; g.font = '11px monospace';
+    g.fillText(String(parseFloat(hi.toPrecision(4))), 6, 14); g.fillText(String(parseFloat(lo.toPrecision(4))), 6, h - 6);
+    series.forEach((s, k) => {
+      g.strokeStyle = COLORS[k % COLORS.length]; g.lineWidth = 1.5; g.beginPath();
+      s.forEach((v, i) => { const x = 44 + (w - 52) * (i / Math.max(1, MAXPTS - 1)), y = h - 8 - (h - 24) * ((v - lo) / (hi - lo)); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+      g.stroke();
+    });
+  }
+  (function loop() { render(); drawPlot(); requestAnimationFrame(loop); })();
+
+  /* ---------- sending ---------- */
+  function toBytes() {
+    const text = $('send').value;
+    if ($('sHex').checked) {
+      const hex = text.replace(/0x/gi, '').replace(/[\s,]+/g, '');
+      if (!hex || hex.length % 2 || /[^0-9a-f]/i.test(hex)) throw new Error('Hex must be pairs of digits such as 48 65 6C 6C 6F.');
+      return Uint8Array.from(hex.match(/../g), h => parseInt(h, 16));
+    }
+    const EOL = { '': '', '\\n': '\n', '\\r': '\r', '\\r\\n': '\r\n' };
+    return new TextEncoder().encode(text + (EOL[$('eol').value] || ''));
+  }
+  let hIdx = -1;
+  async function doSend() {
+    if (!conn) return;
+    try {
+      const data = toBytes(); if (!data.length) return;
+      await conn.write(data);
+      bytes += 0; push('tx', $('sHex').checked ? Array.from(data, b => b.toString(16).padStart(2, '0')).join(' ') : $('send').value);
+      cfg.hist = [$('send').value, ...cfg.hist.filter(x => x !== $('send').value)].slice(0, 20); save(); hIdx = -1;
+      $('send').value = ''; showErr('');
+    } catch (e) { showErr(e.message || String(e)); }
+  }
+  $('sendBtn').addEventListener('click', doSend);
+  $('send').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); doSend(); }
+    else if (e.key === 'ArrowUp' && cfg.hist.length) { e.preventDefault(); hIdx = Math.min(cfg.hist.length - 1, hIdx + 1); $('send').value = cfg.hist[hIdx]; }
+    else if (e.key === 'ArrowDown' && cfg.hist.length) { e.preventDefault(); hIdx = Math.max(-1, hIdx - 1); $('send').value = hIdx < 0 ? '' : cfg.hist[hIdx]; }
+  });
+
+  /* ---------- Web Serial ---------- */
+  async function connectSerial() {
+    const port = await navigator.serial.requestPort();
+    await port.open({
+      baudRate: +$('baud').value, dataBits: +$('dbits').value, stopBits: +$('sbits').value, parity: $('parity').value, bufferSize: 4096
+    });
+    const writer = port.writable ? port.writable.getWriter() : null;
+    let keep = true, reader = null;
+    (async () => {
+      while (port.readable && keep) {
+        reader = port.readable.getReader();
+        try {
+          for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) onData(value); }
+        } catch (e) { if (keep) { push('err', 'Read error: ' + (e.message || e)); } }
+        finally { try { reader.releaseLock(); } catch (_) {} }
+      }
+      if (keep) { keep = false; finish('Device disconnected.'); }
+    })();
+    conn = {
+      write: d => writer.write(d),
+      reset: async () => {
+        await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+        await new Promise(r => setTimeout(r, 100));
+        await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+      },
+      close: async () => {
+        keep = false;
+        try { if (reader) await reader.cancel(); } catch (_) {}
+        try { if (writer) { await writer.close(); writer.releaseLock(); } } catch (_) {}
+        try { await port.close(); } catch (_) {}
+      }
+    };
+    const info = port.getInfo ? port.getInfo() : {};
+    const id = info.usbVendorId ? ` (USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId || 0).toString(16).padStart(4, '0')})` : '';
+    return 'Serial ' + $('baud').value + ' baud' + id;
+  }
+
+  /* ---------- Web Bluetooth ---------- */
+  async function connectBle() {
+    let p = BLE[$('preset').value];
+    if ($('preset').value === 'custom') {
+      const norm = v => { v = v.trim().toLowerCase(); return /^(0x)?[0-9a-f]{4}$/.test(v) ? parseInt(v, 16) : v; };
+      p = { svc: norm($('uSvc').value), tx: norm($('uTx').value), rx: norm($('uRx').value || $('uTx').value) };
+      if (!p.svc || !p.tx) throw new Error('Enter a service UUID and a notify characteristic UUID.');
+    }
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [p.svc] });
+    let gone = false;
+    const onGone = () => { if (!gone) { gone = true; finish('Bluetooth device disconnected.'); } };
+    dev.addEventListener('gattserverdisconnected', onGone);
+    setStatus('Connecting…', 'busy');
+    const server = await dev.gatt.connect();
+    const svc = await server.getPrimaryService(p.svc);
+    const tx = await svc.getCharacteristic(p.tx);
+    let rx = null;
+    try { rx = (p.rx === p.tx) ? tx : await svc.getCharacteristic(p.rx); } catch (_) { /* read-only device */ }
+    const handler = ev => onData(new Uint8Array(ev.target.value.buffer, ev.target.value.byteOffset, ev.target.value.byteLength));
+    tx.addEventListener('characteristicvaluechanged', handler);
+    await tx.startNotifications();
+    conn = {
+      write: async d => {
+        if (!rx) throw new Error('This service has no writable characteristic.');
+        for (let i = 0; i < d.length; i += 20) {                     // default ATT MTU leaves 20 payload bytes
+          const chunk = d.slice(i, i + 20);
+          if (rx.writeValueWithoutResponse) await rx.writeValueWithoutResponse(chunk); else await rx.writeValue(chunk);
+        }
+      },
+      close: async () => {
+        gone = true;
+        try { tx.removeEventListener('characteristicvaluechanged', handler); await tx.stopNotifications(); } catch (_) {}
+        try { dev.gatt.disconnect(); } catch (_) {}
+      }
+    };
+    return 'BLE ' + (dev.name || 'device');
+  }
+
+  /* ---------- connect / disconnect ---------- */
+  function finish(msg) {
+    if (!conn && !msg) return;
+    conn = null;
+    if (msg) push('sys', msg);
+    if (partial) { push('rx', partial); partial = ''; }
+    setStatus('Disconnected');
+    $('connect').disabled = false; $('disconnect').disabled = true; $('sendBtn').disabled = true;
+    applyMode();
+  }
+  $('connect').addEventListener('click', async () => {
+    showErr('');
+    $('connect').disabled = true; setStatus('Connecting…', 'busy');
+    dec = new TextDecoder('utf-8', { fatal: false });
+    try {
+      const label = mode === 'serial' ? await connectSerial() : await connectBle();
+      setStatus('Connected', 'on'); push('sys', 'Connected: ' + label);
+      $('disconnect').disabled = false; $('sendBtn').disabled = false; applyMode();
+      $('connect').disabled = true;
+    } catch (e) {
+      conn = null; setStatus('Disconnected'); $('connect').disabled = false;
+      if (e && e.name === 'NotFoundError') showErr('No device selected.');
+      else if (e && e.name === 'SecurityError') showErr('Access is blocked. Open this page over HTTPS and allow serial/Bluetooth access.');
+      else if (e && e.name === 'InvalidStateError') showErr('The port is already open in another program or tab.');
+      else showErr((e && e.message) || String(e));
+    }
+  });
+  $('disconnect').addEventListener('click', async () => { const c = conn; if (!c) return; conn = null; await c.close(); finish('Disconnected.'); });
+  $('reset').addEventListener('click', async () => { try { if (conn && conn.reset) { await conn.reset(); push('sys', 'Reset pulse sent (DTR/RTS).'); } } catch (e) { showErr(e.message || String(e)); } });
+  window.addEventListener('pagehide', () => { if (conn) conn.close(); });
+  if (hasSerial) navigator.serial.addEventListener('disconnect', () => { if (conn && mode === 'serial') { /* reader loop ends and reports */ } });
+
+  applyMode(); stats();
+  window.addEventListener('daw-lang', () => { dirty = true; applyMode(); });
+})();
+</script>
+</body>
+</html>

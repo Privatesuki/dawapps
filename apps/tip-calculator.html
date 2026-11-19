@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Tip &amp; Bill Split · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>Tip &amp; Bill Splitter</h1>
+  <p>Add a tip and split the total fairly.</p>
+
+  <div class="grid2">
+    <div><label for="bill">Bill amount</label><input id="bill" type="number" value="100000" min="0" step="any" inputmode="decimal"></div>
+    <div><label for="cur">Currency</label>
+      <select id="cur">
+        <option value="IDR" selected>IDR — Rupiah</option>
+        <option value="USD">USD — US Dollar</option>
+        <option value="EUR">EUR — Euro</option>
+        <option value="GBP">GBP — Pound</option>
+        <option value="JPY">JPY — Yen</option>
+        <option value="SGD">SGD — Singapore Dollar</option>
+        <option value="MYR">MYR — Ringgit</option>
+        <option value="AUD">AUD — Australian Dollar</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="tip">Tip: <b id="tipv">10</b>%</label>
+  <input type="range" id="tip" min="0" max="30" step="1" value="10">
+  <div class="row tight" id="presets" style="margin-top:4px">
+    <button type="button" class="secondary small" data-tip="0">0%</button>
+    <button type="button" class="secondary small" data-tip="5">5%</button>
+    <button type="button" class="secondary small" data-tip="10">10%</button>
+    <button type="button" class="secondary small" data-tip="15">15%</button>
+    <button type="button" class="secondary small" data-tip="20">20%</button>
+  </div>
+
+  <label for="people">Number of people</label>
+  <input id="people" type="number" value="2" min="1" step="1" inputmode="numeric">
+  <label class="check"><input type="checkbox" id="roundUp"> Round each share up to a whole unit</label>
+
+  <div class="stats">
+    <div class="stat"><span>Tip</span><strong id="rTip">—</strong></div>
+    <div class="stat"><span>Total</span><strong id="rTotal">—</strong></div>
+    <div class="stat"><span>Per person</span><strong id="rEach">—</strong></div>
+  </div>
+  <p class="small" id="note" style="margin-top:10px"></p>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+
+  function calc() {
+    const bill = Math.max(0, parseFloat($('bill').value) || 0);
+    const tipPct = +$('tip').value;
+    const people = Math.max(1, Math.floor(+$('people').value || 1));
+    const money = new Intl.NumberFormat(undefined, { style: 'currency', currency: $('cur').value });
+
+    $('tipv').textContent = tipPct;
+    const tip = bill * tipPct / 100;
+    const total = bill + tip;
+    let each = total / people;
+    let note = '';
+    if ($('roundUp').checked) {
+      const rounded = Math.ceil(each);
+      note = `Rounded up: the group pays ${money.format(rounded * people)} in total (${money.format(rounded * people - total)} extra).`;
+      each = rounded;
+    }
+    $('rTip').textContent = money.format(tip);
+    $('rTotal').textContent = money.format(total);
+    $('rEach').textContent = money.format(each);
+    $('note').textContent = note;
+  }
+
+  $('presets').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (b) { $('tip').value = b.dataset.tip; calc(); }
+  });
+  ['bill', 'tip', 'people', 'cur', 'roundUp'].forEach(id => $(id).addEventListener('input', calc));
+  calc();
+})();
+</script>
+</body>
+</html>

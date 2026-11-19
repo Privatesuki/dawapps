@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>SVG to Data URI · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .checker { display: grid; place-items: center; min-height: 140px; margin-top: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: 12px;
+    background-color: var(--bg-primary);
+    background-image: linear-gradient(45deg, rgba(128,128,128,.14) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.14) 75%),
+                      linear-gradient(45deg, rgba(128,128,128,.14) 25%, transparent 25%, transparent 75%, rgba(128,128,128,.14) 75%);
+    background-size: 20px 20px; background-position: 0 0, 10px 10px; }
+  .checker img { max-width: 100%; max-height: 220px; }
+  #output { min-height: 120px; font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>SVG to Data URI</h1>
+  <p>Turn SVG markup into a compact data URI for CSS backgrounds or &lt;img&gt; tags.</p>
+
+  <label for="svg">SVG markup</label>
+  <textarea id="svg" spellcheck="false" style="min-height:150px;font-family:var(--mono);font-size:13px" placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#635bff"/></svg>'></textarea>
+  <div class="row">
+    <input type="file" id="file" accept=".svg,image/svg+xml" aria-label="Load an SVG file">
+    <button type="button" class="secondary" id="sample">Load sample</button>
+  </div>
+
+  <div class="grid2">
+    <div><label for="enc">Encoding</label>
+      <select id="enc"><option value="utf8" selected>URL-encoded (smallest)</option><option value="b64">Base64</option></select>
+    </div>
+    <div><label for="fmt">Output as</label>
+      <select id="fmt"><option value="uri">Data URI</option><option value="css">CSS background-image</option><option value="img">&lt;img&gt; tag</option></select>
+    </div>
+  </div>
+
+  <p class="small error" id="err" role="alert" style="margin-top:10px"></p>
+  <p class="small" id="note"></p>
+
+  <div class="checker"><img id="preview" alt="SVG preview" hidden></div>
+
+  <label for="output">Result</label>
+  <textarea id="output" readonly placeholder="The converted result appears here"></textarea>
+  <div class="row">
+    <button type="button" id="copy" disabled>Copy</button>
+    <button type="button" class="secondary" id="clear">Clear</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const SAMPLE = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n  <rect width="100" height="100" rx="22" fill="#635bff"/>\n  <path d="M30 52l14 14 28-32" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>\n</svg>';
+
+  // Remove anything executable: <script>, <foreignObject>, on* handlers, javascript: links.
+  function sanitize(root) {
+    let removed = 0;
+    root.querySelectorAll('script, foreignObject').forEach(n => { n.remove(); removed++; });
+    const all = [root, ...root.querySelectorAll('*')];
+    all.forEach(el => {
+      Array.from(el.attributes).forEach(a => {
+        const bad = /^on/i.test(a.name) || (/href$/i.test(a.name) && /^\s*javascript:/i.test(a.value));
+        if (bad) { el.removeAttribute(a.name); removed++; }
+      });
+    });
+    return removed;
+  }
+
+  function minify(svg) {
+    return svg.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[\s\S]*?>/gi, '').replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
+  }
+
+  const toUtf8 = s => 'data:image/svg+xml,' + s
+    .replace(/"/g, "'")
+    .replace(/%/g, '%25').replace(/#/g, '%23').replace(/</g, '%3C').replace(/>/g, '%3E')
+    .replace(/\{/g, '%7B').replace(/\}/g, '%7D').replace(/\|/g, '%7C').replace(/\^/g, '%5E')
+    .replace(/\[/g, '%5B').replace(/\]/g, '%5D').replace(/`/g, '%60').replace(/\\/g, '%5C');
+
+  const toB64 = s => {
+    const bytes = new TextEncoder().encode(s);
+    let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
+    return 'data:image/svg+xml;base64,' + btoa(bin);
+  };
+
+  function run() {
+    const src = $('svg').value.trim();
+    $('err').textContent = ''; $('note').textContent = '';
+    $('preview').hidden = true; $('copy').disabled = true; $('output').value = '';
+    if (!src) return;
+
+    const doc = new DOMParser().parseFromString(src, 'image/svg+xml');
+    const root = doc.documentElement;
+    if (doc.querySelector('parsererror') || !root || root.localName.toLowerCase() !== 'svg') {
+      $('err').textContent = 'That doesn’t look like valid SVG markup.'; return;
+    }
+    const removed = sanitize(root);
+    if (!root.getAttribute('xmlns')) root.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+    const clean = minify(new XMLSerializer().serializeToString(root));
+    const uri = $('enc').value === 'b64' ? toB64(clean) : toUtf8(clean);
+
+    let result = uri;
+    if ($('fmt').value === 'css') result = `background-image: url("${uri}");`;
+    else if ($('fmt').value === 'img') result = `<img src="${uri}" alt="">`;
+    // URL-encoded output uses single quotes inside, so double-quote wrapping above is safe.
+
+    $('output').value = result;
+    $('copy').disabled = false;
+    $('preview').src = uri; $('preview').hidden = false;
+
+    const before = new Blob([src]).size, after = new Blob([result]).size;
+    let note = `Input ${before.toLocaleString()} B → output ${after.toLocaleString()} B.`;
+    if (removed) note += ` Removed ${removed} unsafe item${removed > 1 ? 's' : ''} (scripts / event handlers).`;
+    $('note').textContent = note;
+  }
+
+  $('svg').addEventListener('input', run);
+  $('enc').addEventListener('change', run);
+  $('fmt').addEventListener('change', run);
+  $('sample').addEventListener('click', () => { $('svg').value = SAMPLE; run(); });
+  $('clear').addEventListener('click', () => { $('svg').value = ''; run(); $('svg').focus(); });
+  $('copy').addEventListener('click', () => DAW.copy($('output').value, $('copy')));
+  $('file').addEventListener('change', () => {
+    const f = $('file').files[0]; if (!f) return;
+    if (f.size > 2e6) { $('err').textContent = 'File is too large (2 MB max).'; return; }
+    f.text().then(t => { $('svg').value = t; run(); });
+    $('file').value = '';
+  });
+  run();
+})();
+</script>
+</body>
+</html>

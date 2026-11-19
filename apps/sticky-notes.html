@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Sticky Notes · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .colors { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .colors button { width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: color-mix(in srgb, hsl(var(--h) 90% 55%) 55%, var(--card-bg)); }
+  .colors button[aria-pressed="true"] { border-color: var(--text-primary); }
+  #notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
+  .note { --h: 50; display: flex; flex-direction: column; padding: 10px; border: 1px solid color-mix(in srgb, hsl(var(--h) 80% 50%) 35%, var(--border-color)); border-radius: 12px; background: color-mix(in srgb, hsl(var(--h) 90% 55%) 18%, var(--card-bg)); }
+  .note textarea { flex: 1; min-height: 110px; padding: 4px; background: transparent; border: 0; resize: vertical; }
+  .note textarea:focus { outline: 0; }
+  .note footer { display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary); font-size: 12px; }
+  .note footer button { padding: 3px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Sticky Notes</h1>
+  <p>Quick notes saved on this device only. Edit them right on the card.</p>
+
+  <label for="note">New note</label>
+  <textarea id="note" placeholder="Write an idea…" style="min-height:90px"></textarea>
+  <div class="colors" id="colors" role="group" aria-label="Note color"></div>
+  <div class="row">
+    <button type="button" id="save">Add note</button>
+  </div>
+
+  <label for="q">Search</label>
+  <input id="q" type="search" placeholder="Filter notes…" autocomplete="off">
+
+  <div id="notes"></div>
+  <p class="muted center" id="empty" hidden>No notes yet.</p>
+
+  <div class="row">
+    <button type="button" class="secondary" id="export">Export JSON</button>
+    <label class="btn secondary" style="margin:0;cursor:pointer">Import JSON<input type="file" id="import" accept="application/json,.json" hidden></label>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const KEY = 'daw-notes-v2', OLD_KEY = 'daw-sticky-notes';
+  const HUES = [50, 150, 200, 330, 270];
+  let hue = HUES[0];
+
+  let notes = DAW.store.get(KEY, null);
+  if (!notes) {                                   // migrate the earliest version (array of strings)
+    const old = DAW.store.get(OLD_KEY, []);
+    notes = old.filter(t => typeof t === 'string').map(t => ({ id: uid(), text: t, hue: HUES[0], t: Date.now() }));
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10); }
+  const persist = () => DAW.store.set(KEY, notes);
+  const saveSoon = DAW.debounce(persist, 300);
+
+  const colors = $('colors');
+  HUES.forEach(h => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.setProperty('--h', h);
+    b.setAttribute('aria-label', 'Color ' + h);
+    b.setAttribute('aria-pressed', h === hue ? 'true' : 'false');
+    b.addEventListener('click', () => { hue = h; [...colors.children].forEach(c => c.setAttribute('aria-pressed', c === b ? 'true' : 'false')); });
+    colors.appendChild(b);
+  });
+
+  function render() {
+    const q = $('q').value.trim().toLowerCase();
+    const box = $('notes');
+    box.innerHTML = '';
+    const list = notes.filter(n => !q || n.text.toLowerCase().includes(q));
+    list.forEach(n => {
+      const card = document.createElement('div');
+      card.className = 'note';
+      card.style.setProperty('--h', n.hue);
+
+      const ta = document.createElement('textarea');
+      ta.value = n.text;
+      ta.setAttribute('aria-label', 'Note text');
+      ta.addEventListener('input', () => { n.text = ta.value; saveSoon(); });
+
+      const foot = document.createElement('footer');
+      const date = document.createElement('span');
+      date.textContent = new Date(n.t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'danger'; del.textContent = 'Delete';
+      del.addEventListener('click', () => { notes = notes.filter(x => x.id !== n.id); persist(); render(); });
+      foot.append(date, del);
+
+      card.append(ta, foot);
+      box.appendChild(card);
+    });
+    $('empty').hidden = list.length > 0;
+    $('empty').textContent = notes.length ? 'No notes match your search.' : 'No notes yet.';
+  }
+
+  $('save').addEventListener('click', () => {
+    const text = $('note').value.trim();
+    if (!text) { $('note').focus(); return; }
+    notes.unshift({ id: uid(), text, hue, t: Date.now() });
+    $('note').value = '';
+    persist(); render();
+  });
+  $('note').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') $('save').click(); });
+  $('q').addEventListener('input', render);
+
+  $('export').addEventListener('click', () =>
+    DAW.download(new Blob([JSON.stringify(notes, null, 2)], { type: 'application/json' }), 'dawapps-notes.json'));
+  $('import').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!Array.isArray(data)) throw new Error('bad');
+      const clean = data.filter(n => n && typeof n.text === 'string')
+        .map(n => ({ id: uid(), text: n.text, hue: HUES.includes(n.hue) ? n.hue : HUES[0], t: +n.t || Date.now() }));
+      notes = clean.concat(notes);
+      persist(); render();
+      DAW.toast('Imported ' + clean.length + ' notes');
+    } catch (err) { DAW.toast('That file is not a valid notes export'); }
+    e.target.value = '';
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

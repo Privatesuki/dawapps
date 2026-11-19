@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Calculator · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  #expr { font-size: 20px; font-family: var(--mono); }
+  #live { min-height: 38px; margin-top: 8px; font-size: 26px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 12px; }
+  .keys button { padding: 13px 4px; font-size: 17px; }
+  .keys button.fn { font-size: 14px; }
+  .keys button.eq { background: var(--accent); }
+  .keys button.num { color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); }
+  .keys button.num:hover { border-color: var(--accent); }
+  .hist-item { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 9px 12px; margin-top: 6px; text-align: left; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-color); }
+  .hist-item:hover { border-color: var(--accent); background: var(--bg-primary); }
+  .hist-item span:first-child { color: var(--text-secondary); font-family: var(--mono); overflow-wrap: anywhere; }
+  .hist-item b { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Calculator</h1>
+  <p>Type an expression or use the keypad. Uses a safe parser, never eval().</p>
+
+  <label class="sr-only" for="expr">Expression</label>
+  <input id="expr" placeholder="(10 + 5) × 2" autocomplete="off" spellcheck="false" inputmode="text">
+  <div class="output" id="live" aria-live="polite">0</div>
+
+  <div class="row tight" style="margin-top:10px;align-items:center">
+    <div class="seg" id="angle" role="group" aria-label="Angle unit" style="min-width:150px">
+      <button type="button" data-u="deg" aria-pressed="true">DEG</button>
+      <button type="button" data-u="rad" aria-pressed="false">RAD</button>
+    </div>
+    <span class="small muted">Functions: sqrt, cbrt, sin, cos, tan, asin, acos, atan, ln, log, abs, round, floor, ceil, exp, pow(a,b), min, max, fact · Constants: pi, e, ans</span>
+  </div>
+
+  <div class="keys" id="keys">
+    <button type="button" class="secondary fn" data-k="C">C</button>
+    <button type="button" class="secondary" data-k="(">(</button>
+    <button type="button" class="secondary" data-k=")">)</button>
+    <button type="button" class="secondary" data-k="%">%</button>
+    <button type="button" class="secondary" data-k="⌫" aria-label="Backspace">⌫</button>
+
+    <button type="button" class="secondary fn" data-k="sqrt(">√</button>
+    <button type="button" class="num" data-k="7">7</button>
+    <button type="button" class="num" data-k="8">8</button>
+    <button type="button" class="num" data-k="9">9</button>
+    <button type="button" class="secondary" data-k="÷">÷</button>
+
+    <button type="button" class="secondary fn" data-k="^">xʸ</button>
+    <button type="button" class="num" data-k="4">4</button>
+    <button type="button" class="num" data-k="5">5</button>
+    <button type="button" class="num" data-k="6">6</button>
+    <button type="button" class="secondary" data-k="×">×</button>
+
+    <button type="button" class="secondary fn" data-k="pi">π</button>
+    <button type="button" class="num" data-k="1">1</button>
+    <button type="button" class="num" data-k="2">2</button>
+    <button type="button" class="num" data-k="3">3</button>
+    <button type="button" class="secondary" data-k="−">−</button>
+
+    <button type="button" class="secondary fn" data-k="ans">ans</button>
+    <button type="button" class="num" data-k="0">0</button>
+    <button type="button" class="num" data-k=".">.</button>
+    <button type="button" class="eq" data-k="=">=</button>
+    <button type="button" class="secondary" data-k="+">+</button>
+  </div>
+
+  <h3>History <button type="button" class="danger small" id="clearHist" style="float:right">Clear</button></h3>
+  <div id="hist"><p class="small">Your calculations will appear here.</p></div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const HIST_KEY = 'daw-calc-history';
+  let unit = DAW.store.get('daw-calc-unit', 'deg');
+  let ans = 0;
+  let hist = DAW.store.get(HIST_KEY, []);
+  if (!Array.isArray(hist)) hist = [];
+
+  /* ---------- Parser: recursive descent over a token list ---------- */
+  const toRad = x => unit === 'deg' ? x * Math.PI / 180 : x;
+  const fromRad = x => unit === 'deg' ? x * 180 / Math.PI : x;
+  const fact = n => {
+    if (n < 0 || !Number.isInteger(n) || n > 170) throw new Error('Factorial needs an integer 0–170');
+    let r = 1; for (let i = 2; i <= n; i++) r *= i; return r;
+  };
+  const FN = {
+    sqrt: x => { if (x < 0) throw new Error('Square root of a negative number'); return Math.sqrt(x); },
+    cbrt: Math.cbrt, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil, exp: Math.exp,
+    sin: x => Math.sin(toRad(x)), cos: x => Math.cos(toRad(x)), tan: x => Math.tan(toRad(x)),
+    asin: x => fromRad(Math.asin(x)), acos: x => fromRad(Math.acos(x)), atan: x => fromRad(Math.atan(x)),
+    ln: x => { if (x <= 0) throw new Error('ln needs a positive number'); return Math.log(x); },
+    log: x => { if (x <= 0) throw new Error('log needs a positive number'); return Math.log10(x); },
+    fact, pow: Math.pow, min: Math.min, max: Math.max, mod: (a, b) => { if (!b) throw new Error('Division by zero'); return a % b; }
+  };
+  const CONST = { pi: Math.PI, e: Math.E };
+
+  function tokenize(src) {
+    const s = src.replace(/×/g, '*').replace(/÷/g, '/').replace(/[−–]/g, '-').replace(/π/g, 'pi').replace(/√/g, 'sqrt');
+    const re = /\s*(?:(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+)|([a-zA-Z_]+)|(.))/gy;
+    const out = []; let m;
+    while (re.lastIndex < s.length && (m = re.exec(s))) {
+      if (m[1] !== undefined) out.push({ t: 'num', v: parseFloat(m[1]) });
+      else if (m[2]) out.push({ t: 'id', v: m[2].toLowerCase() });
+      else if ('+-*/^%(),'.includes(m[3])) out.push({ t: 'op', v: m[3] });
+      else if (m[3].trim()) throw new Error('Unexpected "' + m[3] + '"');
+    }
+    return out;
+  }
+
+  function evaluate(src) {
+    const t = tokenize(src); let i = 0;
+    const peek = () => t[i];
+    const isOp = v => t[i] && t[i].t === 'op' && t[i].v === v;
+
+    function expr() {
+      let v = term();
+      while (isOp('+') || isOp('-')) { const op = t[i++].v; const b = term(); v = op === '+' ? v + b : v - b; }
+      return v;
+    }
+    function term() {
+      let v = unary();
+      for (;;) {
+        if (isOp('*') || isOp('/')) {
+          const op = t[i++].v, b = unary();
+          if (op === '/' && b === 0) throw new Error('Division by zero');
+          v = op === '*' ? v * b : v / b;
+        } else if (peek() && (peek().t === 'id' || isOp('('))) {   // implicit multiplication: 2pi, 3(4+1)
+          v *= unary();
+        } else return v;
+      }
+    }
+    function unary() {
+      if (isOp('-')) { i++; return -unary(); }
+      if (isOp('+')) { i++; return unary(); }
+      return power();
+    }
+    function power() {
+      const base = postfix();
+      if (isOp('^')) { i++; return Math.pow(base, unary()); }      // right-associative, allows 2^-1
+      return base;
+    }
+    function postfix() {
+      let v = primary();
+      while (isOp('%')) { i++; v /= 100; }
+      return v;
+    }
+    function primary() {
+      const tok = t[i++];
+      if (!tok) throw new Error('Incomplete expression');
+      if (tok.t === 'num') return tok.v;
+      if (tok.t === 'op' && tok.v === '(') {
+        const v = expr();
+        if (!isOp(')')) throw new Error('Missing )');
+        i++; return v;
+      }
+      if (tok.t === 'id') {
+        if (tok.v === 'ans') return ans;
+        if (tok.v in CONST) return CONST[tok.v];
+        if (tok.v in FN) {
+          if (!isOp('(')) throw new Error(tok.v + ' needs ( )');
+          i++;
+          const args = [];
+          if (!isOp(')')) { args.push(expr()); while (isOp(',')) { i++; args.push(expr()); } }
+          if (!isOp(')')) throw new Error('Missing )');
+          i++;
+          const r = FN[tok.v].apply(null, args);
+          if (typeof r !== 'number') throw new Error('Invalid argument');
+          return r;
+        }
+        throw new Error('Unknown name "' + tok.v + '"');
+      }
+      throw new Error('Unexpected "' + tok.v + '"');
+    }
+
+    if (!t.length) throw new Error('empty');
+    const result = expr();
+    if (i < t.length) throw new Error(t[i].v === ')' ? 'Extra )' : 'Unexpected "' + t[i].v + '"');
+    if (!Number.isFinite(result)) throw new Error('Result is not a finite number');
+    return result;
+  }
+
+  const fmt = n => {
+    const r = parseFloat(n.toPrecision(12));         // trims 0.1+0.2 style noise
+    if (Math.abs(r) >= 1e15 || (Math.abs(r) < 1e-9 && r !== 0)) return r.toExponential(6).replace(/\.?0+e/, 'e');
+    return r.toLocaleString('en-US', { maximumFractionDigits: 12 });
+  };
+
+  /* ---------- UI ---------- */
+  const expr = $('expr');
+
+  function preview() {
+    const v = expr.value.trim();
+    if (!v) { $('live').textContent = '0'; $('live').classList.remove('error'); return; }
+    try { $('live').textContent = fmt(evaluate(v)); $('live').classList.remove('error'); }
+    catch (e) { $('live').classList.toggle('error', false); $('live').textContent = '…'; }
+  }
+
+  function commit() {
+    const v = expr.value.trim();
+    if (!v) return;
+    try {
+      const r = evaluate(v);
+      ans = r;
+      hist.unshift({ e: v, r: fmt(r), n: r });
+      hist = hist.slice(0, 30);
+      DAW.store.set(HIST_KEY, hist);
+      expr.value = String(parseFloat(r.toPrecision(12)));
+      $('live').textContent = fmt(r);
+      $('live').classList.remove('error');
+      renderHist();
+    } catch (e) {
+      $('live').textContent = e.message;
+      $('live').classList.add('error');
+    }
+  }
+
+  function renderHist() {
+    const box = $('hist');
+    if (!hist.length) { box.innerHTML = '<p class="small">Your calculations will appear here.</p>'; return; }
+    box.innerHTML = '';
+    hist.forEach(h => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'hist-item';
+      b.title = 'Click to reuse the result';
+      b.innerHTML = '<span></span><b></b>';
+      b.firstChild.textContent = h.e + ' =';
+      b.lastChild.textContent = h.r;
+      b.addEventListener('click', () => { expr.value = String(parseFloat(h.n.toPrecision(12))); preview(); expr.focus(); });
+      box.appendChild(b);
+    });
+  }
+
+  function insert(text) {
+    const s = expr.selectionStart ?? expr.value.length, e = expr.selectionEnd ?? s;
+    expr.value = expr.value.slice(0, s) + text + expr.value.slice(e);
+    const pos = s + text.length;
+    expr.setSelectionRange(pos, pos);
+  }
+
+  $('keys').addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const k = b.dataset.k;
+    if (k === '=') commit();
+    else if (k === 'C') { expr.value = ''; }
+    else if (k === '⌫') {
+      const s = expr.selectionStart, e = expr.selectionEnd;
+      if (s !== e) insert('');
+      else if (s > 0) { expr.value = expr.value.slice(0, s - 1) + expr.value.slice(s); expr.setSelectionRange(s - 1, s - 1); }
+    } else insert(k);
+    preview();
+    if (!matchMedia('(pointer: coarse)').matches) expr.focus();
+  });
+
+  expr.addEventListener('input', preview);
+  expr.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+
+  $('angle').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    unit = b.dataset.u; DAW.store.set('daw-calc-unit', unit); paintUnit(); preview();
+  });
+  function paintUnit() {
+    document.querySelectorAll('#angle button').forEach(b => b.setAttribute('aria-pressed', b.dataset.u === unit ? 'true' : 'false'));
+  }
+  $('clearHist').addEventListener('click', () => { hist = []; DAW.store.set(HIST_KEY, hist); renderHist(); });
+
+  if (hist[0]) ans = hist[0].n;
+  paintUnit(); renderHist(); preview();
+})();
+</script>
+</body>
+</html>

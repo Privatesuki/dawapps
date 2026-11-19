@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>QR Generator · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .qr-wrap { display: grid; place-items: center; min-height: 260px; margin-top: 16px; padding: 18px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; }
+  #qr { width: min(100%, 300px); height: auto; image-rendering: pixelated; border-radius: 6px; }
+  .panel[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>QR Code Generator</h1>
+  <p>Real, scannable QR codes generated on your device — no internet needed.</p>
+
+  <div class="seg" id="tabs" role="group" aria-label="Content type">
+    <button type="button" data-tab="text" aria-pressed="true">Text / Link</button>
+    <button type="button" data-tab="wifi" aria-pressed="false">Wi-Fi</button>
+  </div>
+
+  <div class="panel" id="panel-text">
+    <label for="text">Text or URL</label>
+    <textarea id="text" placeholder="https://example.com" style="min-height:90px" spellcheck="false"></textarea>
+  </div>
+
+  <div class="panel" id="panel-wifi" hidden>
+    <label for="ssid">Network name (SSID)</label>
+    <input id="ssid" autocomplete="off" spellcheck="false">
+    <div class="grid2">
+      <div><label for="wpass">Password</label><input id="wpass" autocomplete="off" spellcheck="false"></div>
+      <div><label for="wsec">Security</label>
+        <select id="wsec"><option value="WPA">WPA / WPA2 / WPA3</option><option value="WEP">WEP</option><option value="nopass">None</option></select>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="whidden"> Hidden network</label>
+  </div>
+
+  <div class="grid2">
+    <div><label for="ecl">Error correction</label>
+      <select id="ecl">
+        <option value="L">Low (7%)</option>
+        <option value="M" selected>Medium (15%)</option>
+        <option value="Q">Quartile (25%)</option>
+        <option value="H">High (30%)</option>
+      </select>
+    </div>
+    <div><label for="size">Image size</label>
+      <select id="size"><option value="256">256 px</option><option value="512" selected>512 px</option><option value="1024">1024 px</option><option value="2048">2048 px</option></select>
+    </div>
+    <div><label for="fg">Foreground</label><input type="color" id="fg" value="#000000"></div>
+    <div><label for="bg">Background</label><input type="color" id="bg" value="#ffffff"></div>
+  </div>
+
+  <div class="qr-wrap"><canvas id="qr" width="300" height="300" aria-label="Generated QR code"></canvas></div>
+  <p class="small center" id="info" style="margin-top:10px">Type something to generate a code.</p>
+  <p class="small center error" id="err" role="alert"></p>
+
+  <div class="row">
+    <button type="button" id="png" disabled>Download PNG</button>
+    <button type="button" class="secondary" id="svg" disabled>Download SVG</button>
+    <button type="button" class="secondary" id="copy" disabled>Copy content</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script src="../assets/js/qr.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  let tab = 'text', qr = null, content = '';
+
+  const wifiEsc = s => s.replace(/([\\;,:"])/g, '\\$1');
+
+  function getContent() {
+    if (tab === 'text') return $('text').value.trim();
+    const ssid = $('ssid').value;
+    if (!ssid) return '';
+    const sec = $('wsec').value;
+    return `WIFI:T:${sec};S:${wifiEsc(ssid)};${sec === 'nopass' ? '' : 'P:' + wifiEsc($('wpass').value) + ';'}${$('whidden').checked ? 'H:true;' : ''};`;
+  }
+
+  function opts() {
+    return { size: +$('size').value, margin: 4, fg: $('fg').value, bg: $('bg').value };
+  }
+
+  function render() {
+    content = getContent();
+    const canvas = $('qr');
+    $('err').textContent = '';
+    const buttons = ['png', 'svg', 'copy'].map($);
+    if (!content) {
+      qr = null;
+      const c = canvas.getContext('2d');
+      canvas.width = canvas.height = 300;
+      c.clearRect(0, 0, 300, 300);
+      $('info').textContent = 'Type something to generate a code.';
+      buttons.forEach(b => b.disabled = true);
+      return;
+    }
+    try {
+      qr = DawQR.encode(content, $('ecl').value);
+      DawQR.toCanvas(qr, canvas, opts());
+      $('info').textContent = `Version ${qr.version} · ${qr.size}×${qr.size} modules · ${canvas.width}×${canvas.height}px`;
+      buttons.forEach(b => b.disabled = false);
+    } catch (e) {
+      qr = null;
+      $('err').textContent = e.message;
+      buttons.forEach(b => b.disabled = true);
+    }
+  }
+  const renderSoon = DAW.debounce(render, 120);
+
+  $('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    tab = b.dataset.tab;
+    document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-pressed', x === b ? 'true' : 'false'));
+    $('panel-text').hidden = tab !== 'text';
+    $('panel-wifi').hidden = tab !== 'wifi';
+    render();
+  });
+
+  ['text', 'ssid', 'wpass'].forEach(id => $(id).addEventListener('input', renderSoon));
+  ['wsec', 'whidden', 'ecl', 'size', 'fg', 'bg'].forEach(id => $(id).addEventListener('input', render));
+
+  $('png').addEventListener('click', () => {
+    if (!qr) return;
+    $('qr').toBlob(blob => blob && DAW.download(blob, 'qr-code.png'), 'image/png');
+  });
+  $('svg').addEventListener('click', () => {
+    if (!qr) return;
+    DAW.download(new Blob([DawQR.toSVG(qr, opts())], { type: 'image/svg+xml' }), 'qr-code.svg');
+  });
+  $('copy').addEventListener('click', e => { if (content) DAW.copy(content, e.currentTarget); });
+
+  render();
+})();
+</script>
+</body>
+</html>

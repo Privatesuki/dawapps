@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Epoch Converter · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .now { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding: 12px 14px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; }
+  .now code { font-size: 20px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Epoch Timestamp Converter</h1>
+  <p>Unix timestamps to readable dates and back. Seconds, milliseconds, microseconds and nanoseconds are detected automatically.</p>
+
+  <div class="now">
+    <div><span class="small muted">Current Unix time</span><br><code id="nowVal">…</code></div>
+    <div class="row tight">
+      <button type="button" class="secondary small" id="useNow">Use now</button>
+      <button type="button" class="secondary small" id="copyNow">Copy</button>
+    </div>
+  </div>
+
+  <h2>Timestamp → date</h2>
+  <label for="epoch">Unix timestamp</label>
+  <input id="epoch" inputmode="numeric" placeholder="1794900000" autocomplete="off">
+  <p class="small muted" id="detected" style="margin-top:6px"></p>
+  <p class="small error" id="err1" role="alert"></p>
+  <div id="out1"></div>
+
+  <h2>Date → timestamp</h2>
+  <div class="grid2">
+    <div><label for="date">Date &amp; time</label><input id="date" type="datetime-local" step="1"></div>
+    <div><label for="zone">Interpret as</label>
+      <select id="zone"><option value="local">My local time</option><option value="utc">UTC</option></select>
+    </div>
+  </div>
+  <p class="small error" id="err2" role="alert" style="margin-top:8px"></p>
+  <div id="out2"></div>
+
+  <label for="tz" style="margin-top:20px">Show results in time zone</label>
+  <select id="tz"></select>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const pad = (n, l = 2) => String(n).padStart(l, '0');
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+  // Time zone picker: local, UTC, then every IANA zone the browser knows.
+  (function fillZones() {
+    let zones = [];
+    try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) { zones = ['Asia/Jakarta', 'Asia/Tokyo', 'Europe/London', 'America/New_York', 'America/Los_Angeles']; }
+    const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; $('tz').appendChild(o); };
+    opt(localTz, 'Local (' + localTz + ')');
+    opt('UTC', 'UTC');
+    zones.filter(z => z !== localTz && z !== 'UTC').forEach(z => opt(z, z));
+  })();
+
+  function row(parent, label, value) {
+    const r = document.createElement('div');
+    r.className = 'kv';
+    r.innerHTML = '<b></b><code></code><button type="button" class="secondary small">Copy</button>';
+    r.querySelector('b').textContent = label;
+    r.querySelector('code').textContent = value;
+    const btn = r.querySelector('button');
+    btn.addEventListener('click', () => DAW.copy(value, btn));
+    parent.appendChild(r);
+  }
+
+  const inZone = (d, tz) => {
+    try {
+      return new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'full', timeStyle: 'long', timeZone: tz }).format(d);
+    } catch (e) { return d.toString(); }
+  };
+
+  const rel = ms => {
+    const abs = Math.abs(ms), s = Math.round(abs / 1000);
+    if (s < 5) return 'just now';
+    const units = [['year', 31557600], ['month', 2629800], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]];
+    for (const [name, sec] of units) {
+      if (s >= sec) { const n = Math.floor(s / sec); const txt = n + ' ' + name + (n > 1 ? 's' : ''); return ms < 0 ? txt + ' ago' : 'in ' + txt; }
+    }
+    return '';
+  };
+
+  function show(parent, d) {
+    parent.innerHTML = '';
+    row(parent, 'Zone', inZone(d, $('tz').value));
+    row(parent, 'UTC', d.toUTCString());
+    row(parent, 'ISO 8601', d.toISOString());
+    row(parent, 'Relative', rel(d.getTime() - Date.now()));
+    row(parent, 'Seconds', String(Math.floor(d.getTime() / 1000)));
+    row(parent, 'Millis', String(d.getTime()));
+  }
+
+  // Decide the unit from the number of digits.
+  function unitOf(n) {
+    const a = Math.abs(n);
+    if (a < 1e11) return { u: 's', f: 1000 };
+    if (a < 1e14) return { u: 'milliseconds', f: 1 };
+    if (a < 1e17) return { u: 'microseconds', f: 1 / 1000 };
+    return { u: 'nanoseconds', f: 1 / 1e6 };
+  }
+
+  function fromEpoch() {
+    const raw = $('epoch').value.trim();
+    $('err1').textContent = ''; $('detected').textContent = '';
+    if (!raw) { $('out1').innerHTML = ''; return; }
+    if (!/^-?\d+(\.\d+)?$/.test(raw)) { $('out1').innerHTML = ''; $('err1').textContent = 'Enter digits only (e.g. 1794900000).'; return; }
+    const n = Number(raw), { u, f } = unitOf(n);
+    const d = new Date(n * f);
+    if (Number.isNaN(d.getTime())) { $('out1').innerHTML = ''; $('err1').textContent = 'That timestamp is out of range.'; return; }
+    $('detected').textContent = 'Detected unit: ' + (u === 's' ? 'seconds' : u);
+    show($('out1'), d);
+  }
+
+  function fromDate() {
+    const v = $('date').value;
+    $('err2').textContent = '';
+    if (!v) { $('out2').innerHTML = ''; return; }
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) { $('out2').innerHTML = ''; $('err2').textContent = 'Choose a valid date and time.'; return; }
+    const [Y, Mo, D, H, Mi, S] = m.slice(1).map(x => x === undefined ? 0 : +x);
+    const d = $('zone').value === 'utc' ? new Date(Date.UTC(Y, Mo - 1, D, H, Mi, S)) : new Date(Y, Mo - 1, D, H, Mi, S);
+    if (Number.isNaN(d.getTime())) { $('out2').innerHTML = ''; $('err2').textContent = 'Choose a valid date and time.'; return; }
+    show($('out2'), d);
+  }
+
+  function tickNow() { $('nowVal').textContent = Math.floor(Date.now() / 1000); }
+
+  $('epoch').addEventListener('input', fromEpoch);
+  $('date').addEventListener('input', fromDate);
+  $('zone').addEventListener('change', fromDate);
+  $('tz').addEventListener('change', () => { fromEpoch(); fromDate(); });
+  $('useNow').addEventListener('click', () => { $('epoch').value = Math.floor(Date.now() / 1000); fromEpoch(); });
+  $('copyNow').addEventListener('click', () => DAW.copy($('nowVal').textContent, $('copyNow')));
+
+  // Start with the current moment so both sections show something useful.
+  const n = new Date();
+  $('date').value = `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  $('epoch').value = Math.floor(n.getTime() / 1000);
+  window.addEventListener('daw-lang', () => { fromEpoch(); fromDate(); });
+  tickNow(); setInterval(tickNow, 1000);
+  fromEpoch(); fromDate();
+})();
+</script>
+</body>
+</html>

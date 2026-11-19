@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Shadow Generator · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .stage { display: grid; place-items: center; height: 230px; margin-top: 16px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 12px; }
+  #box { width: 130px; height: 130px; background: var(--card-bg); border: 1px solid var(--border-color); }
+  .ctl label { display: flex; justify-content: space-between; }
+  .ctl output { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>CSS Shadow Generator</h1>
+  <p>Tweak the sliders and copy production-ready CSS.</p>
+
+  <div class="stage"><div id="box"></div></div>
+
+  <div class="grid2 ctl">
+    <div><label for="x">Horizontal <output id="xo"></output></label><input type="range" id="x" min="-60" max="60" value="0"></div>
+    <div><label for="y">Vertical <output id="yo"></output></label><input type="range" id="y" min="-60" max="60" value="12"></div>
+    <div><label for="blur">Blur <output id="bo"></output></label><input type="range" id="blur" min="0" max="120" value="32"></div>
+    <div><label for="spread">Spread <output id="so"></output></label><input type="range" id="spread" min="-40" max="60" value="-4"></div>
+    <div><label for="opacity">Opacity <output id="oo"></output></label><input type="range" id="opacity" min="0" max="100" value="25"></div>
+    <div><label for="radius">Border radius <output id="ro"></output></label><input type="range" id="radius" min="0" max="80" value="20"></div>
+  </div>
+
+  <div class="grid2">
+    <div><label for="color">Shadow color</label><input type="color" id="color" value="#10131b"></div>
+    <div><label for="stageBg">Stage color</label><input type="color" id="stageBg" value="#f5f7fb"></div>
+  </div>
+  <label class="check"><input type="checkbox" id="inset"> Inset shadow</label>
+
+  <label for="css">CSS</label>
+  <textarea id="css" class="mono" readonly style="min-height:80px"></textarea>
+  <div class="row">
+    <button type="button" id="copy">Copy CSS</button>
+    <button type="button" class="secondary" id="reset">Reset</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const sliders = ['x', 'y', 'blur', 'spread', 'opacity', 'radius'];
+  const outs = { x: 'xo', y: 'yo', blur: 'bo', spread: 'so', opacity: 'oo', radius: 'ro' };
+  const units = { opacity: '%' };
+  const defaults = { x: 0, y: 12, blur: 32, spread: -4, opacity: 25, radius: 20 };
+
+  function rgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  function update() {
+    const v = {};
+    sliders.forEach(id => { v[id] = +$(id).value; $(outs[id]).textContent = v[id] + (units[id] || 'px'); });
+    const shadow = `${$('inset').checked ? 'inset ' : ''}${v.x}px ${v.y}px ${v.blur}px ${v.spread}px ${rgba($('color').value, v.opacity / 100)}`;
+    const box = $('box');
+    box.style.boxShadow = shadow;
+    box.style.borderRadius = v.radius + 'px';
+    document.querySelector('.stage').style.background = $('stageBg').value;
+    $('css').value = `box-shadow: ${shadow};\nborder-radius: ${v.radius}px;`;
+  }
+
+  sliders.concat(['color', 'stageBg']).forEach(id => $(id).addEventListener('input', update));
+  $('inset').addEventListener('change', update);
+  $('copy').addEventListener('click', e => DAW.copy($('css').value, e.currentTarget));
+  $('reset').addEventListener('click', () => {
+    sliders.forEach(id => $(id).value = defaults[id]);
+    $('color').value = '#10131b'; $('stageBg').value = '#f5f7fb'; $('inset').checked = false;
+    update();
+  });
+  update();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Text Case · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 14px; }
+  .cases button { padding: 9px 8px; font-size: 14px; }
+  .cases button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Text Case Converter</h1>
+  <p>Change the case of any text — prose or code identifiers. Works line by line.</p>
+
+  <label for="text">Your text</label>
+  <textarea id="text" placeholder="Type or paste text…" spellcheck="false"></textarea>
+
+  <div class="cases" id="cases" role="group" aria-label="Case styles">
+    <button type="button" data-case="upper">UPPER CASE</button>
+    <button type="button" data-case="lower">lower case</button>
+    <button type="button" data-case="title">Title Case</button>
+    <button type="button" data-case="sentence">Sentence case</button>
+    <button type="button" data-case="camel">camelCase</button>
+    <button type="button" data-case="pascal">PascalCase</button>
+    <button type="button" data-case="snake">snake_case</button>
+    <button type="button" data-case="kebab">kebab-case</button>
+    <button type="button" data-case="constant">CONSTANT_CASE</button>
+    <button type="button" data-case="alt">aLtErNaTe</button>
+  </div>
+
+  <label for="output">Result</label>
+  <textarea id="output" readonly placeholder="Converted text appears here"></textarea>
+  <div class="row">
+    <button type="button" id="copy" disabled>Copy result</button>
+    <button type="button" class="secondary" id="use" disabled>Use result as input</button>
+    <button type="button" class="secondary" id="clear">Clear</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  let active = DAW.store.get('daw-textcase', 'upper');
+
+  // Split a line into lowercase words: handles spaces, _ - . and camelCase boundaries.
+  const words = line => line
+    .replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, '$1 $2')
+    .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, '$1 $2')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map(w => w.toLowerCase());
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+
+  const conv = {
+    upper:    s => s.toUpperCase(),
+    lower:    s => s.toLowerCase(),
+    title:    s => s.toLowerCase().replace(/\p{L}[\p{L}\p{M}'’]*/gu, cap),
+    sentence: s => s.toLowerCase().replace(/(^\s*|[.!?]\s+)(\p{L})/gmu, (_, a, b) => a + b.toUpperCase()),
+    camel:    s => mapLines(s, l => words(l).map((w, i) => i ? cap(w) : w).join('')),
+    pascal:   s => mapLines(s, l => words(l).map(cap).join('')),
+    snake:    s => mapLines(s, l => words(l).join('_')),
+    kebab:    s => mapLines(s, l => words(l).join('-')),
+    constant: s => mapLines(s, l => words(l).join('_').toUpperCase()),
+    alt:      s => Array.from(s.toLowerCase()).map((c, i) => i % 2 ? c.toUpperCase() : c).join('')
+  };
+  const mapLines = (s, fn) => s.split('\n').map(fn).join('\n');
+
+  function run() {
+    const src = $('text').value;
+    const out = src ? conv[active](src) : '';
+    $('output').value = out;
+    $('copy').disabled = $('use').disabled = !out;
+    document.querySelectorAll('#cases button').forEach(b =>
+      b.setAttribute('aria-pressed', b.dataset.case === active ? 'true' : 'false'));
+  }
+
+  $('cases').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    active = b.dataset.case;
+    DAW.store.set('daw-textcase', active);
+    run();
+  });
+  $('text').addEventListener('input', run);
+  $('copy').addEventListener('click', () => DAW.copy($('output').value, $('copy')));
+  $('use').addEventListener('click', () => { $('text').value = $('output').value; run(); });
+  $('clear').addEventListener('click', () => { $('text').value = ''; run(); $('text').focus(); });
+  if (!conv[active]) active = 'upper';
+  run();
+})();
+</script>
+</body>
+</html>

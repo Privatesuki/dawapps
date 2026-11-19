@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>CSS Units · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>CSS Units Converter</h1>
+  <p>Convert between px, rem, em, pt, vw, vh and physical units using your own base sizes.</p>
+
+  <div class="grid2">
+    <div><label for="val">Value</label><input id="val" type="number" step="any" value="16" inputmode="decimal"></div>
+    <div><label for="unit">From</label>
+      <select id="unit">
+        <option>px</option><option>rem</option><option>em</option><option>pt</option><option>pc</option>
+        <option>in</option><option>cm</option><option>mm</option>
+        <option>vw</option><option>vh</option><option>vmin</option><option>vmax</option>
+      </select>
+    </div>
+  </div>
+
+  <details open>
+    <summary>Context (used for rem, em and viewport units)</summary>
+    <div class="grid2">
+      <div><label for="root">Root font size (px)</label><input id="root" type="number" min="1" step="any" value="16" inputmode="decimal"></div>
+      <div><label for="parentFs">Parent font size (px)</label><input id="parentFs" type="number" min="1" step="any" value="16" inputmode="decimal"></div>
+      <div><label for="vw">Viewport width (px)</label><input id="vw" type="number" min="1" step="any" value="1440" inputmode="decimal"></div>
+      <div><label for="vh">Viewport height (px)</label><input id="vh" type="number" min="1" step="any" value="900" inputmode="decimal"></div>
+    </div>
+    <div class="row"><button type="button" class="secondary small" id="device">Use this device’s screen</button></div>
+  </details>
+
+  <p class="small error" id="err" role="alert" style="margin-top:12px"></p>
+  <div id="results"></div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const KEY = 'daw-cssunits';
+  const UNITS = ['px', 'rem', 'em', 'pt', 'pc', 'in', 'cm', 'mm', 'vw', 'vh', 'vmin', 'vmax'];
+
+  const saved = DAW.store.get(KEY, {});
+  ['root', 'parentFs', 'vw', 'vh'].forEach(id => { if (saved[id] > 0) $(id).value = saved[id]; });
+
+  const num = id => +$(id).value;
+
+  // CSS reference pixel: 1in = 96px = 72pt = 6pc = 2.54cm
+  function toPx(v, u, c) {
+    switch (u) {
+      case 'px': return v;
+      case 'rem': return v * c.root;
+      case 'em': return v * c.parent;
+      case 'pt': return v * 96 / 72;
+      case 'pc': return v * 16;
+      case 'in': return v * 96;
+      case 'cm': return v * 96 / 2.54;
+      case 'mm': return v * 96 / 25.4;
+      case 'vw': return v * c.vw / 100;
+      case 'vh': return v * c.vh / 100;
+      case 'vmin': return v * Math.min(c.vw, c.vh) / 100;
+      case 'vmax': return v * Math.max(c.vw, c.vh) / 100;
+    }
+  }
+  const fromPx = (px, u, c) => {
+    switch (u) {
+      case 'px': return px;
+      case 'rem': return px / c.root;
+      case 'em': return px / c.parent;
+      case 'pt': return px * 72 / 96;
+      case 'pc': return px / 16;
+      case 'in': return px / 96;
+      case 'cm': return px * 2.54 / 96;
+      case 'mm': return px * 25.4 / 96;
+      case 'vw': return px / c.vw * 100;
+      case 'vh': return px / c.vh * 100;
+      case 'vmin': return px / Math.min(c.vw, c.vh) * 100;
+      case 'vmax': return px / Math.max(c.vw, c.vh) * 100;
+    }
+  };
+  const fmt = n => String(parseFloat(n.toFixed(5)));
+
+  function run() {
+    const c = { root: num('root'), parent: num('parentFs'), vw: num('vw'), vh: num('vh') };
+    const v = $('val').value === '' ? NaN : num('val');
+    const box = $('results');
+    if (!(c.root > 0 && c.parent > 0 && c.vw > 0 && c.vh > 0)) { $('err').textContent = 'Context sizes must be positive numbers.'; box.innerHTML = ''; return; }
+    $('err').textContent = '';
+    DAW.store.set(KEY, { root: c.root, parentFs: c.parent, vw: c.vw, vh: c.vh });
+    if (!Number.isFinite(v)) { box.innerHTML = ''; return; }
+
+    const px = toPx(v, $('unit').value, c);
+    box.innerHTML = '';
+    UNITS.forEach(u => {
+      const text = fmt(fromPx(px, u, c)) + u;
+      const row = document.createElement('div');
+      row.className = 'kv';
+      row.innerHTML = '<b></b><code></code><button type="button" class="secondary small">Copy</button>';
+      row.querySelector('b').textContent = u;
+      row.querySelector('code').textContent = text;
+      const btn = row.querySelector('button');
+      btn.addEventListener('click', () => DAW.copy(text, btn));
+      if (u === $('unit').value) row.style.borderColor = 'var(--accent)';
+      box.appendChild(row);
+    });
+  }
+
+  ['val', 'unit', 'root', 'parentFs', 'vw', 'vh'].forEach(id => $(id).addEventListener('input', run));
+  $('unit').addEventListener('change', run);
+  $('device').addEventListener('click', () => {
+    $('vw').value = Math.round(screen.width); $('vh').value = Math.round(screen.height); run();
+  });
+  run();
+})();
+</script>
+</body>
+</html>

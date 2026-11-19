@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Color Studio · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  #preview { display: grid; place-items: center; height: 120px; margin-top: 14px; font-size: 34px; font-weight: 700; border: 1px solid var(--border-color); border-radius: 12px; }
+  .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
+  .swatches button { height: 84px; padding: 6px; font: 600 12px/1.2 var(--mono); border: 1px solid var(--border-color); display: flex; align-items: flex-end; justify-content: center; }
+  .swatches button:hover { transform: translateY(-2px); }
+  .badge { display: inline-block; margin-left: 8px; padding: 0 8px; font-size: 12px; border-radius: 99px; border: 1px solid var(--border-color); }
+  .badge.pass { color: var(--success); }
+  .badge.fail { color: var(--danger); }
+  @media (max-width: 480px) { .swatches { grid-template-columns: repeat(5, 1fr); gap: 5px; } .swatches button { font-size: 10px; height: 70px; } }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Color Studio</h1>
+  <p>Pick a color, grab HEX / RGB / HSL values and build matching palettes.</p>
+
+  <div class="row" style="margin-top:0">
+    <input type="color" id="picker" value="#635bff" aria-label="Color picker" style="flex:0 0 76px;min-width:76px">
+    <input id="hex" value="#635bff" maxlength="7" spellcheck="false" autocomplete="off" aria-label="HEX value" class="mono" style="flex:2">
+    <button type="button" class="secondary" id="random">Random</button>
+    <button type="button" class="secondary" id="eyedrop" hidden>Eyedropper</button>
+  </div>
+
+  <div id="preview">Aa</div>
+
+  <div class="kv"><b>HEX</b><code id="vHex"></code><button type="button" class="secondary small" data-copy="vHex">Copy</button></div>
+  <div class="kv"><b>RGB</b><code id="vRgb"></code><button type="button" class="secondary small" data-copy="vRgb">Copy</button></div>
+  <div class="kv"><b>HSL</b><code id="vHsl"></code><button type="button" class="secondary small" data-copy="vHsl">Copy</button></div>
+  <p class="small" style="margin-top:10px">Contrast with white text <span class="badge" id="cWhite"></span> &nbsp; with black text <span class="badge" id="cBlack"></span></p>
+
+  <hr>
+  <h2>Palette</h2>
+  <label for="scheme">Scheme</label>
+  <select id="scheme">
+    <option value="analogous">Analogous</option>
+    <option value="complementary">Complementary</option>
+    <option value="triadic">Triadic</option>
+    <option value="split">Split-complementary</option>
+    <option value="mono">Monochromatic</option>
+  </select>
+  <div class="swatches" id="swatches"></div>
+  <p class="small" style="margin-top:8px">Click a swatch to copy its HEX and use it as the new base color.</p>
+  <button type="button" class="secondary" id="copyCss">Copy as CSS variables</button>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  let current = '#635bff';
+  let palette = [];
+
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const rgbToHex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+
+  function normalizeHex(s) {
+    s = s.trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(s)) s = s.split('').map(c => c + c).join('');
+    return /^[0-9a-f]{6}$/i.test(s) ? '#' + s.toLowerCase() : null;
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0, s = 0; const l = (max + min) / 2;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    return [h, s * 100, l * 100];
+  }
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360; s = clamp(s, 0, 100) / 100; l = clamp(l, 0, 100) / 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return rgbToHex((r + m) * 255, (g + m) * 255, (b + m) * 255);
+  }
+  function luminance([r, g, b]) {
+    const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+    return .2126 * f(r) + .7152 * f(g) + .0722 * f(b);
+  }
+  const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
+
+  function badge(el, ratio) {
+    el.textContent = ratio.toFixed(2) + ':1 ' + (ratio >= 4.5 ? 'AA ✓' : 'fail');
+    el.className = 'badge ' + (ratio >= 4.5 ? 'pass' : 'fail');
+  }
+
+  function buildPalette(hex) {
+    const [h, s, l] = rgbToHsl(...hexToRgb(hex));
+    const L = v => clamp(v, 10, 92);
+    switch ($('scheme').value) {
+      case 'complementary': return [hslToHex(h, s, L(l - 18)), hex, hslToHex(h, s, L(l + 18)), hslToHex(h + 180, s, L(l)), hslToHex(h + 180, s, L(l + 18))];
+      case 'triadic':       return [hex, hslToHex(h + 120, s, l), hslToHex(h + 240, s, l), hslToHex(h, s, L(l + 20)), hslToHex(h + 120, s, L(l + 20))];
+      case 'split':         return [hex, hslToHex(h + 150, s, l), hslToHex(h + 210, s, l), hslToHex(h + 150, s, L(l + 18)), hslToHex(h + 210, s, L(l + 18))];
+      case 'mono':          return [20, 35, 50, 65, 80].map(v => hslToHex(h, s, v));
+      default:              return [-30, -15, 0, 15, 30].map(d => hslToHex(h + d, s, l));
+    }
+  }
+
+  function set(hex, fromPicker) {
+    const n = normalizeHex(hex);
+    if (!n) return;
+    current = n;
+    if (!fromPicker) $('picker').value = n;
+    if (document.activeElement !== $('hex')) $('hex').value = n;
+    const rgb = hexToRgb(n), [h, s, l] = rgbToHsl(...rgb);
+    $('vHex').textContent = n.toUpperCase();
+    $('vRgb').textContent = `rgb(${rgb.join(', ')})`;
+    $('vHsl').textContent = `hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
+    const pv = $('preview');
+    pv.style.background = n;
+    const white = contrast(rgb, [255, 255, 255]), black = contrast(rgb, [0, 0, 0]);
+    pv.style.color = white >= black ? '#fff' : '#000';
+    badge($('cWhite'), white); badge($('cBlack'), black);
+    renderPalette();
+  }
+
+  function renderPalette() {
+    palette = buildPalette(current);
+    const box = $('swatches');
+    box.innerHTML = '';
+    palette.forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.style.background = c;
+      b.style.color = contrast(hexToRgb(c), [255, 255, 255]) >= contrast(hexToRgb(c), [0, 0, 0]) ? '#fff' : '#000';
+      b.textContent = c.toUpperCase();
+      b.setAttribute('aria-label', 'Use ' + c);
+      b.addEventListener('click', () => { DAW.copy(c); set(c); });
+      box.appendChild(b);
+    });
+  }
+
+  $('picker').addEventListener('input', e => set(e.target.value, true));
+  $('hex').addEventListener('input', e => set(e.target.value));
+  $('hex').addEventListener('blur', () => { $('hex').value = current; });
+  $('scheme').addEventListener('change', renderPalette);
+  $('random').addEventListener('click', () => set(hslToHex(Math.random() * 360, 55 + Math.random() * 35, 40 + Math.random() * 25)));
+  document.querySelectorAll('[data-copy]').forEach(b =>
+    b.addEventListener('click', () => DAW.copy($(b.dataset.copy).textContent, b)));
+  $('copyCss').addEventListener('click', e =>
+    DAW.copy(':root {\n' + palette.map((c, i) => `  --color-${i + 1}: ${c};`).join('\n') + '\n}', e.currentTarget));
+
+  if ('EyeDropper' in window) {
+    $('eyedrop').hidden = false;
+    $('eyedrop').addEventListener('click', async () => {
+      try { set((await new EyeDropper().open()).sRGBHex); } catch (e) { /* cancelled */ }
+    });
+  }
+
+  set(current);
+})();
+</script>
+</body>
+</html>

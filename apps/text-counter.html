@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Text Counter · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+</head>
+<body>
+<main class="app">
+  <h1>Text Counter</h1>
+  <p>Words, characters, sentences and reading time — updated as you type.</p>
+
+  <label for="txt">Your text</label>
+  <textarea id="txt" placeholder="Start typing or paste text…" style="min-height:180px"></textarea>
+
+  <div class="stats">
+    <div class="stat"><span>Words</span><strong id="words">0</strong></div>
+    <div class="stat"><span>Characters</span><strong id="chars">0</strong></div>
+    <div class="stat"><span>No spaces</span><strong id="nospace">0</strong></div>
+    <div class="stat"><span>Sentences</span><strong id="sentences">0</strong></div>
+    <div class="stat"><span>Paragraphs</span><strong id="paras">0</strong></div>
+    <div class="stat"><span>Reading time</span><strong id="read">0 min</strong></div>
+  </div>
+
+  <div class="row">
+    <button type="button" class="secondary" id="copy">Copy text</button>
+    <button type="button" class="secondary" id="clear">Clear</button>
+  </div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const txt = $('txt');
+  const fmt = new Intl.NumberFormat();
+
+  function readTime(words) {
+    if (!words) return '0 min';
+    const sec = Math.ceil(words / 200 * 60);           // 200 words per minute
+    return sec < 60 ? sec + ' sec' : Math.ceil(sec / 60) + ' min';
+  }
+
+  function count() {
+    const v = txt.value;
+    const trimmed = v.trim();
+    const words = trimmed ? trimmed.split(/\s+/u).length : 0;
+    const chars = Array.from(v).length;                 // code points, so emoji count once
+    const noSpace = Array.from(v.replace(/\s/g, '')).length;
+    const sentences = trimmed ? trimmed.split(/[.!?…]+(?:\s+|$)/u).filter(s => s.trim()).length : 0;
+    const paras = trimmed ? trimmed.split(/\n\s*\n/).filter(p => p.trim()).length : 0;
+
+    $('words').textContent = fmt.format(words);
+    $('chars').textContent = fmt.format(chars);
+    $('nospace').textContent = fmt.format(noSpace);
+    $('sentences').textContent = fmt.format(sentences);
+    $('paras').textContent = fmt.format(paras);
+    $('read').textContent = readTime(words);
+  }
+
+  txt.addEventListener('input', count);
+  $('clear').addEventListener('click', () => { txt.value = ''; count(); txt.focus(); });
+  $('copy').addEventListener('click', e => { if (txt.value) DAW.copy(txt.value, e.currentTarget); });
+  count();
+})();
+</script>
+</body>
+</html>

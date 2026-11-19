@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Code Scanner · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  .viewport { position: relative; margin-top: 14px; overflow: hidden; background: #000; border-radius: 12px; aspect-ratio: 4 / 3; display: none; }
+  .viewport.on { display: block; }
+  .viewport video { width: 100%; height: 100%; object-fit: cover; }
+  .viewport::after { content: ""; position: absolute; inset: 18% 18%; border: 2px solid rgba(255,255,255,.75); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.28); pointer-events: none; }
+  .hit { margin-top: 10px; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; }
+  .hit-fmt { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .04em; }
+  .hit-val { margin: 4px 0 10px; font-family: var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .hit .row { margin-top: 0; }
+  .hit .row > * { flex: none; min-width: 0; }
+  .notice { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-primary); }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Barcode &amp; QR Scanner</h1>
+  <p>Scan with your camera or read a code from an image. Everything stays on your device.</p>
+
+  <div class="notice small" id="unsupported" hidden>
+    This browser doesn’t include the built-in BarcodeDetector API, so scanning is unavailable here. Chrome, Edge, Opera and Chrome on Android support it.
+  </div>
+
+  <div class="row" id="controls">
+    <button type="button" id="start">Start camera</button>
+    <button type="button" class="secondary" id="stop" disabled>Stop camera</button>
+  </div>
+  <div class="viewport" id="viewport"><video id="video" autoplay muted playsinline></video></div>
+
+  <label for="file">Or choose an image with a code</label>
+  <input id="file" type="file" accept="image/*">
+
+  <p class="small" id="status" aria-live="polite" style="margin-top:12px">Ready.</p>
+  <div id="results"></div>
+  <div class="row" id="histActions" hidden><button type="button" class="danger small" id="clear">Clear results</button></div>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  const supported = 'BarcodeDetector' in window;
+  let detector = null, stream = null, timer = null, busy = false;
+  const seen = new Map();   // value -> true, dedupe
+
+  async function getDetector() {
+    if (detector) return detector;
+    let formats;
+    try { formats = await BarcodeDetector.getSupportedFormats(); } catch (e) { formats = undefined; }
+    detector = formats && formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+    return detector;
+  }
+
+  const isUrl = v => { try { const u = new URL(v); return u.protocol === 'http:' || u.protocol === 'https:'; } catch (e) { return false; } };
+
+  function addResult(code) {
+    const value = code.rawValue;
+    if (!value || seen.has(value)) return false;
+    seen.set(value, true);
+    const el = document.createElement('div');
+    el.className = 'hit';
+    el.innerHTML = '<div class="hit-fmt"></div><div class="hit-val"></div><div class="row"></div>';
+    el.querySelector('.hit-fmt').textContent = String(code.format || 'code').replace(/_/g, ' ');
+    el.querySelector('.hit-val').textContent = value;
+    const actions = el.querySelector('.row');
+    const copy = document.createElement('button');
+    copy.type = 'button'; copy.className = 'small'; copy.textContent = 'Copy';
+    copy.addEventListener('click', () => DAW.copy(value, copy));
+    actions.appendChild(copy);
+    if (isUrl(value)) {
+      const a = document.createElement('a');
+      a.className = 'btn secondary small'; a.textContent = 'Open link ↗';
+      a.href = value; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      actions.appendChild(a);
+    }
+    $('results').prepend(el);
+    $('histActions').hidden = false;
+    if (navigator.vibrate) navigator.vibrate(60);
+    return true;
+  }
+
+  function reportCodes(codes) {
+    let added = 0;
+    codes.forEach(c => { if (addResult(c)) added++; });
+    if (added) $('status').textContent = `Found ${added} new code${added > 1 ? 's' : ''}.`;
+    return added;
+  }
+
+  async function loop() {
+    if (!stream) return;
+    const v = $('video');
+    if (!busy && v.readyState >= 2) {
+      busy = true;
+      try { reportCodes(await (await getDetector()).detect(v)); } catch (e) { /* frame not ready */ }
+      busy = false;
+    }
+    timer = setTimeout(loop, 200);
+  }
+
+  async function start() {
+    if (!supported) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $('status').textContent = 'Camera access needs HTTPS (or localhost).'; return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    } catch (e) {
+      $('status').textContent = e.name === 'NotAllowedError' ? 'Camera permission was denied.' : 'Could not open the camera: ' + e.message;
+      return;
+    }
+    $('video').srcObject = stream;
+    $('viewport').classList.add('on');
+    $('start').disabled = true; $('stop').disabled = false;
+    $('status').textContent = 'Point the camera at a code…';
+    loop();
+  }
+
+  function stop() {
+    clearTimeout(timer); timer = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    $('video').srcObject = null;
+    $('viewport').classList.remove('on');
+    $('start').disabled = !supported; $('stop').disabled = true;
+    if (supported) $('status').textContent = 'Camera stopped.';
+  }
+
+  $('start').addEventListener('click', start);
+  $('stop').addEventListener('click', stop);
+  window.addEventListener('pagehide', stop);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && stream) stop(); });
+
+  $('file').addEventListener('change', async () => {
+    const f = $('file').files[0]; if (!f) return;
+    if (!f.type.startsWith('image/')) { $('status').textContent = 'Please choose an image file.'; return; }
+    $('status').textContent = 'Reading image…';
+    try {
+      const bmp = await createImageBitmap(f);
+      const codes = await (await getDetector()).detect(bmp);
+      if (bmp.close) bmp.close();
+      if (!codes.length) $('status').textContent = 'No code found in that image. Try a sharper, closer photo.';
+      else if (!reportCodes(codes)) $('status').textContent = 'That code is already in the list.';
+    } catch (e) {
+      $('status').textContent = 'Could not read that image: ' + e.message;
+    }
+    $('file').value = '';
+  });
+
+  $('clear').addEventListener('click', () => { $('results').innerHTML = ''; seen.clear(); $('histActions').hidden = true; $('status').textContent = 'Cleared.'; });
+
+  if (!supported) {
+    $('unsupported').hidden = false;
+    $('start').disabled = true;
+    $('file').disabled = true;
+    $('status').textContent = '';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f5f7fb">
+<title>Stopwatch · DAWAPPS</title>
+<link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/global.css">
+<script src="../assets/js/theme.js"></script>
+<script src="../assets/js/i18n.js"></script>
+<style>
+  #laps { list-style: none; margin: 12px 0 0; padding: 0; }
+  #laps li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; margin-top: 6px; font-variant-numeric: tabular-nums; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; }
+  #laps li.best { border-color: var(--success); }
+  #laps li.worst { border-color: var(--danger); }
+  #laps .n { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>Stopwatch</h1>
+  <p>Keyboard: Space to start / pause, L for a lap.</p>
+
+  <div class="output big-number" id="time" role="timer" aria-live="off">00:00.00</div>
+
+  <div class="row">
+    <button type="button" id="start">Start</button>
+    <button type="button" class="secondary" id="lap" disabled>Lap</button>
+    <button type="button" class="secondary" id="reset" disabled>Reset</button>
+  </div>
+
+  <ol id="laps" reversed></ol>
+</main>
+
+<script src="../assets/js/common.js"></script>
+<script>
+(() => {
+  const $ = DAW.$;
+  let running = false, startAt = 0, elapsed = 0, raf = 0, lastLap = 0;
+  const laps = [];
+
+  function format(t) {
+    const h = Math.floor(t / 3600000), m = Math.floor(t / 60000) % 60, s = Math.floor(t / 1000) % 60, c = Math.floor(t / 10) % 100;
+    const p = n => String(n).padStart(2, '0');
+    return (h ? h + ':' : '') + p(m) + ':' + p(s) + '.' + p(c);
+  }
+  const now = () => elapsed + (running ? performance.now() - startAt : 0);
+
+  function draw() {
+    $('time').textContent = format(now());
+    if (running) raf = requestAnimationFrame(draw);
+  }
+
+  function renderLaps() {
+    const ul = $('laps');
+    ul.innerHTML = '';
+    if (!laps.length) return;
+    const splits = laps.map(l => l.split);
+    const best = Math.min(...splits), worst = Math.max(...splits);
+    laps.slice().reverse().forEach((l, idx) => {
+      const li = document.createElement('li');
+      if (laps.length > 2) { if (l.split === best) li.className = 'best'; else if (l.split === worst) li.className = 'worst'; }
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = 'Lap ' + (laps.length - idx);
+      const sp = document.createElement('span'); sp.textContent = '+' + format(l.split);
+      const tt = document.createElement('span'); tt.textContent = format(l.total);
+      li.append(n, sp, tt);
+      ul.appendChild(li);
+    });
+  }
+
+  function toggle() {
+    if (running) {
+      elapsed += performance.now() - startAt;
+      running = false;
+      cancelAnimationFrame(raf);
+      $('start').textContent = 'Resume';
+      $('lap').disabled = true;
+      draw();
+    } else {
+      startAt = performance.now();
+      running = true;
+      $('start').textContent = 'Pause';
+      $('lap').disabled = false;
+      $('reset').disabled = false;
+      draw();
+    }
+  }
+  function lap() {
+    if (!running) return;
+    const t = now();
+    laps.push({ total: t, split: t - lastLap });
+    lastLap = t;
+    renderLaps();
+  }
+  function reset() {
+    running = false; cancelAnimationFrame(raf);
+    elapsed = 0; lastLap = 0; laps.length = 0;
+    $('start').textContent = 'Start';
+    $('lap').disabled = true; $('reset').disabled = true;
+    renderLaps(); draw();
+  }
+
+  $('start').addEventListener('click', toggle);
+  $('lap').addEventListener('click', lap);
+  $('reset').addEventListener('click', reset);
+  document.addEventListener('keydown', e => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey) return;
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'l' || e.key === 'L') lap();
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
