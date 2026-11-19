@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>DAWAPPS Playground — 28 mini tools, offline-ready</title>
+  <meta name="description" content="28 fast, private mini tools that run entirely in your browser: counters, converters, generators, formatters and more. Installable and works offline.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="DAWAPPS">
+  <meta property="og:title" content="DAWAPPS Playground">
+  <meta property="og:description" content="28 private mini tools in your browser. Installable, works offline.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="assets/css/global.css">
+  <link rel="stylesheet" href="assets/css/hub.css">
+  <script src="assets/js/theme.js"></script>
+  <script src="assets/js/i18n.js"></script>
+</head>
+<body class="hub" data-bare>
+  <div class="hub-bg" aria-hidden="true"></div>
+
+  <div class="shell" id="main">
+    <header class="top">
+      <div class="brand">
+        <img src="assets/icons/favicon.svg" width="40" height="40" alt="">
+        <div>
+          <h1>DAWAPPS</h1>
+          <p>Playground</p>
+        </div>
+      </div>
+      <div id="langSlot" class="lang-slot"></div>
+      <button type="button" class="secondary install" id="install" hidden>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Install
+      </button>
+      <button type="button" class="secondary icon-btn" id="themeBtn" aria-label="Toggle light / dark theme"></button>
+    </header>
+
+    <section class="hero">
+      <h2>Small tools.<br>Zero friction.</h2>
+      <p>28 private mini apps that run entirely in your browser. No accounts, no uploads — and they keep working offline.</p>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <label for="search" class="sr-only">Search apps</label>
+        <input id="search" type="search" placeholder="Search apps &amp; snippets — try “qr”, “mqtt” or “oled”" autocomplete="off" spellcheck="false" enterkeyhint="go">
+        <kbd aria-hidden="true">/</kbd>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+    </section>
+
+    <div class="meta">
+      <span id="count" aria-live="polite"></span>
+    </div>
+
+    <ul class="bento" id="grid"></ul>
+
+    <div class="empty" id="empty" hidden>
+      <div class="empty-ico" aria-hidden="true">🔎</div>
+      <h3>No apps match</h3>
+      <p id="emptyMsg">Try a different keyword.</p>
+      <button type="button" class="secondary" id="clear">Clear filters</button>
+    </div>
+
+    <section class="snips" id="snips" hidden aria-labelledby="snipsH">
+      <h2 id="snipsH">Code snippets</h2>
+      <ul class="snip-list" id="snipList"></ul>
+    </section>
+
+    <noscript><p class="empty">DAWAPPS needs JavaScript. You can still open any tool directly from the <code>/apps</code> folder.</p></noscript>
+
+    <footer class="foot">
+      <span class="pill" id="net"><i class="dot"></i><span id="netText">Online</span></span>
+      <span>Vanilla JS · No tracking · Your data never leaves this device</span>
+    </footer>
+  </div>
+
+  <!-- App workspace -->
+  <div class="ws" id="ws" role="dialog" aria-modal="true" aria-labelledby="wsTitle" aria-hidden="true" inert>
+    <div class="ws-panel">
+      <header class="ws-head">
+        <button type="button" class="secondary icon-btn" id="wsClose" aria-label="Close app (Esc)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <span class="ws-ico" id="wsIcon" aria-hidden="true"></span>
+        <strong id="wsTitle" class="ws-title"></strong>
+        <a class="btn secondary icon-btn" id="wsNew" href="#" target="_blank" rel="noopener" aria-label="Open in a new tab">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </a>
+        <button type="button" class="secondary icon-btn" id="wsTheme" aria-label="Toggle light / dark theme"></button>
+      </header>
+      <div class="ws-body">
+        <div class="ws-load" id="wsLoad" aria-hidden="true"><i></i></div>
+        <iframe id="frame" title="App" allow="camera; clipboard-write; fullscreen; serial; bluetooth" referrerpolicy="same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <div class="update-bar" id="update" hidden role="status">
+    <span>A new version is available.</span>
+    <button type="button" id="reload">Reload</button>
+  </div>
+
+  <script src="assets/js/common.js"></script>
+  <script src="assets/js/apps.js"></script>
+  <script src="assets/js/hub.js"></script>
+</body>
+</html>

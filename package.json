@@ -1,0 +1,9 @@
+{
+  "name": "dawapps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DAWAPPS Playground — 25 offline-capable mini apps, vanilla JS.",
+  "scripts": {
+    "build": "node scripts/stamp-sw.mjs"
+  }
+}
