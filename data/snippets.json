@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "updated": "2026-11-18",
+  "boards": {
+    "esp32": "ESP32",
+    "esp8266": "ESP8266",
+    "arduino": "Arduino Uno / Nano"
+  },
+  "snippets": [
+    {
+      "id": "esp32-relay-webserver",
+      "title": "ESP32 4-Channel Relay Web Server",
+      "summary": "Control four relays from any browser with a built-in web page and a small REST API.",
+      "description": "Runs a web server on the ESP32 with a responsive control page (4 toggle buttons) and JSON endpoints, so the same relays can be driven from scripts, Home Assistant or curl. Supports active-low relay modules, mDNS (esp32-relay.local) and a non-blocking Wi-Fi watchdog.",
+      "category": "Control",
+      "boards": ["esp32"],
+      "difficulty": "Intermediate",
+      "tags": ["relay", "web server", "wifi", "rest", "http", "home automation", "switch", "mdns"],
+      "libraries": [
+        { "name": "WiFi, WebServer, ESPmDNS", "note": "Bundled with the Arduino-ESP32 core, nothing to install." }
+      ],
+      "wiring": [
+        { "from": "GPIO 23", "to": "Relay IN1" },
+        { "from": "GPIO 22", "to": "Relay IN2" },
+        { "from": "GPIO 21", "to": "Relay IN3" },
+        { "from": "GPIO 19", "to": "Relay IN4" },
+        { "from": "5V / VIN", "to": "Relay VCC" },
+        { "from": "GND", "to": "Relay GND" }
+      ],
+      "notes": [
+        "Set WIFI_SSID and WIFI_PASS before uploading.",
+        "If your relays turn ON at boot or behave inverted, flip ACTIVE_LOW.",
+        "No authentication: keep it on your local network.",
+        "Use an opto-isolated relay board and a proper enclosure for mains loads."
+      ],
+      "filename": "esp32_relay_webserver.ino",
+      "language": "cpp",
+      "codeFile": "data/snippets/esp32_relay_webserver.ino"
+    },
+    {
+      "id": "oled-ssd1306-i2c",
+      "title": "OLED Display (SSD1306 128x64 I2C) - Init & Text Print",
+      "summary": "Initialize a 0.96\" SSD1306 OLED and print text in several sizes with a live counter.",
+      "description": "Minimal, portable setup for the popular 128x64 I2C OLED. Shows the initialization sequence, text sizes, cursor handling and the display() push, then updates an uptime counter once per second without blocking.",
+      "category": "Display",
+      "boards": ["esp32", "esp8266", "arduino"],
+      "difficulty": "Beginner",
+      "tags": ["oled", "ssd1306", "i2c", "display", "screen", "adafruit", "gfx", "text"],
+      "libraries": [
+        { "name": "Adafruit SSD1306", "note": "Library Manager" },
+        { "name": "Adafruit GFX Library", "note": "Installed together with SSD1306" }
+      ],
+      "wiring": [
+        { "from": "OLED VCC", "to": "3V3 (or 5V on regulated modules)" },
+        { "from": "OLED GND", "to": "GND" },
+        { "from": "OLED SDA", "to": "GPIO 21 (ESP32) / A4 (Uno)" },
+        { "from": "OLED SCL", "to": "GPIO 22 (ESP32) / A5 (Uno)" }
+      ],
+      "notes": [
+        "Address is 0x3C on most modules; a few use 0x3D.",
+        "Nothing appears until display.display() is called.",
+        "On Arduino Uno the SSD1306 buffer uses about 1 KB of RAM."
+      ],
+      "filename": "oled_ssd1306_i2c.ino",
+      "language": "cpp",
+      "codeFile": "data/snippets/oled_ssd1306_i2c.ino"
+    },
+    {
+      "id": "lcd-i2c-16x2",
+      "title": "I2C LCD 16x2 - Setup & Counter",
+      "summary": "Auto-detect the I2C address of a 16x2 character LCD, print text and run a counter.",
+      "description": "Works with the common HD44780 LCD + PCF8574 backpack. The sketch scans the bus to find the address (0x27 or 0x3F), initializes the screen and displays a once-per-second counter without leftover characters.",
+      "category": "Display",
+      "boards": ["esp32", "esp8266", "arduino"],
+      "difficulty": "Beginner",
+      "tags": ["lcd", "16x2", "i2c", "display", "hd44780", "pcf8574", "liquidcrystal", "counter"],
+      "libraries": [
+        { "name": "LiquidCrystal I2C (Frank de Brabander)", "note": "Library Manager" }
+      ],
+      "wiring": [
+        { "from": "LCD GND", "to": "GND" },
+        { "from": "LCD VCC", "to": "5V" },
+        { "from": "LCD SDA", "to": "GPIO 21 (ESP32) / A4 (Uno)" },
+        { "from": "LCD SCL", "to": "GPIO 22 (ESP32) / A5 (Uno)" }
+      ],
+      "notes": [
+        "Blank or solid blocks? Turn the contrast potentiometer on the backpack.",
+        "The LCD needs 5V; SDA/SCL still work with 3.3V ESP32 boards in most cases (use a level shifter if unsure).",
+        "Use lcd->clear() sparingly; it is slow and makes the screen flicker."
+      ],
+      "filename": "lcd_i2c_16x2.ino",
+      "language": "cpp",
+      "codeFile": "data/snippets/lcd_i2c_16x2.ino"
+    },
+    {
+      "id": "wifi-mqtt-client",
+      "title": "Wi-Fi & MQTT Client Boilerplate",
+      "summary": "Non-blocking Wi-Fi + MQTT client with auto-reconnect, Last Will, telemetry and a command topic.",
+      "description": "A solid starting point for any IoT node: connects to Wi-Fi, keeps an MQTT session alive with exponential backoff, publishes retained online/offline status with a Last Will, sends JSON telemetry every 10 s and reacts to commands on a subscribed topic.",
+      "category": "Networking",
+      "boards": ["esp32", "esp8266"],
+      "difficulty": "Intermediate",
+      "tags": ["mqtt", "wifi", "iot", "pubsubclient", "broker", "telemetry", "json", "home assistant", "last will"],
+      "libraries": [
+        { "name": "PubSubClient (Nick O'Leary)", "note": "Library Manager" }
+      ],
+      "wiring": [
+        { "from": "GPIO 2", "to": "On-board LED (already wired on most boards)" }
+      ],
+      "notes": [
+        "The default broker is a public test server: anyone can read your topics. Use your own broker for real data.",
+        "Use WiFiClientSecure and port 8883 for TLS.",
+        "Default MQTT packet size is 256 bytes; this sketch raises it to 512 with setBufferSize()."
+      ],
+      "filename": "wifi_mqtt_client.ino",
+      "language": "cpp",
+      "codeFile": "data/snippets/wifi_mqtt_client.ino"
+    }
+  ]
+}
