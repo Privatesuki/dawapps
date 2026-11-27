@@ -11,13 +11,13 @@
 <script src="../assets/js/i18n.js"></script>
 <style>
   #preview { display: grid; place-items: center; height: 120px; margin-top: 14px; font-size: 34px; font-weight: 700; border: 1px solid var(--border-color); border-radius: 12px; }
-  .swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 10px; }
+  .swatches { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
   .swatches button { height: 84px; padding: 6px; font: 600 12px/1.2 var(--mono); border: 1px solid var(--border-color); display: flex; align-items: flex-end; justify-content: center; }
   .swatches button:hover { transform: translateY(-2px); }
   .badge { display: inline-block; margin-left: 8px; padding: 0 8px; font-size: 12px; border-radius: 99px; border: 1px solid var(--border-color); }
   .badge.pass { color: var(--success); }
   .badge.fail { color: var(--danger); }
-  @media (max-width: 480px) { .swatches { grid-template-columns: repeat(5, 1fr); gap: 5px; } .swatches button { font-size: 10px; height: 70px; } }
+  @media (max-width: 480px) { .swatches { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; } .swatches button { font-size: 10px; height: 70px; } }
 </style>
 </head>
 <body>
