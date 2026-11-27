@@ -1,0 +1,39 @@
+{
+  "_readme": "Single source of truth for the My Apps catalogue (Dwix Labs). Add an app by appending to \"apps\" and uploading its installer to external hosting (GitHub Releases / Cloudflare R2). No frontend changes needed. Validate with: node scripts/validate-my-apps.mjs",
+  "schema": 1,
+  "publisher": "Dwix Labs",
+  "apps": [
+    {
+      "id": "advanced-network-utilities",
+      "name": "Advanced Network Utilities",
+      "description": "A Windows toolkit for inspecting and troubleshooting your network connection.",
+      "platform": "windows",
+      "category": "Networking",
+      "version": "v1.0.0",
+      "fileSize": "46.3MB",
+      "releaseDate": "27-11-2026",
+      "status": "Release",
+      "fileName": "advanced-network-utilities.exe",
+      "downloadUrl": "https://github.com/Dawredos/ANU/releases/download/v1.0.0/ANU.Advanced.Network.Utilities.exe",
+      "icon": "🌐",
+      "changelog": ["Rilis Awal"],
+      "requirements": ["Windows 10 atau Terbaru"]
+    },
+    {
+      "id": "tabungan-assaku",
+      "name": "Tabungan Assaku",
+      "description": "An Android app for tracking your savings.",
+      "platform": "android",
+      "category": "Finance",
+      "version": null,
+      "fileSize": null,
+      "releaseDate": null,
+      "status": "coming-soon",
+      "fileName": "tabunganassaku.apk",
+      "downloadUrl": "",
+      "icon": "💰",
+      "changelog": [],
+      "requirements": []
+    }
+  ]
+}
