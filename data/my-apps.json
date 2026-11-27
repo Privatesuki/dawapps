@@ -9,15 +9,15 @@
       "description": "A Windows toolkit for inspecting and troubleshooting your network connection.",
       "platform": "windows",
       "category": "Networking",
-      "version": "v1.0.0",
-      "fileSize": "46.3MB",
-      "releaseDate": "27-11-2026",
-      "status": "Release",
+      "version": "1.0.0",
+      "fileSize": "46.3 MB",
+      "releaseDate": "2026-11-27",
+      "status": "available",
       "fileName": "advanced-network-utilities.exe",
       "downloadUrl": "https://github.com/Dawredos/ANU/releases/download/v1.0.0/ANU.Advanced.Network.Utilities.exe",
       "icon": "🌐",
       "changelog": ["Rilis Awal"],
-      "requirements": ["Windows 10 atau Terbaru"]
+      "requirements": ["Windows 10 atau lebih baru"]
     },
     {
       "id": "tabungan-assaku",
