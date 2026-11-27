@@ -124,7 +124,8 @@ button.small { padding: 6px 10px; font-size: 13px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .row > * { flex: 1; min-width: 100px; }
 .row.tight > * { flex: none; min-width: 0; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+input[type="datetime-local"], input[type="date"], input[type="time"] { min-width: 0; max-width: 100%; }
 
 .output {
   margin-top: 16px;
@@ -177,7 +178,10 @@ html.embedded .app { margin: 0 auto; }
 }
 .lang-select:hover { border-color: var(--accent); }
 .lang-slot { display: contents; }
-.daw-bar .lang-select { height: 36px; margin-inline-start: auto; margin-inline-end: 8px; }
+.daw-bar .lang-select { height: 36px; min-width: 0; margin-inline-start: auto; margin-inline-end: 8px; }
+.daw-bar > * { min-width: 0; }
+.daw-bar a { white-space: nowrap; }
+.daw-bar button { flex: none; }
 
 /* ---------- Right-to-left (Arabic) ---------- */
 html[dir="rtl"] .app, html[dir="rtl"] .shell { direction: rtl; }
@@ -201,9 +205,11 @@ html[dir="rtl"] h3 button[style*="float"] { float: left !important; }
 
 @media (max-width: 500px) {
   body { padding: 10px; }
+  .daw-bar .lang-select { max-width: 40vw; margin-inline-end: 4px; }
   .app { margin: 10px auto; padding: 19px; }
   h1 { font-size: 22px; }
   .stats { grid-template-columns: repeat(2, 1fr); }
+  .grid2:has(input[type="datetime-local"]) { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
