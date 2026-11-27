@@ -1,5 +1,5 @@
 /* DAWAPPS service worker
- * - Precaches the whole app shell + all 28 mini-apps and every language pack on first visit (offline-ready).
+ * - Precaches the whole app shell + all 28 mini-apps + My Apps and every language pack on first visit (offline-ready).
  * - Stale-while-revalidate for everything same-origin afterwards.
  * - A new deploy changes BUILD (see scripts/stamp-sw.mjs) -> new cache -> update prompt in the hub.
  */
@@ -13,10 +13,12 @@ const PRECACHE = [
   'manifest.json',
   'assets/css/global.css',
   'assets/css/hub.css',
+  'assets/css/myapps.css',
   'assets/js/theme.js',
   'assets/js/common.js',
   'assets/js/apps.js',
   'assets/js/hub.js',
+  'assets/js/myapps.js',
   'assets/js/qr.js',
   'assets/js/i18n.js',
   'assets/i18n/id.js',
@@ -28,6 +30,7 @@ const PRECACHE = [
   'assets/i18n/es.js',
   'assets/i18n/ar.js',
   'assets/icons/favicon.svg',
+  'assets/icons/dwix-labs.svg',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
   'assets/icons/maskable-512.png',
@@ -61,6 +64,7 @@ const PRECACHE = [
   'apps/snippet-vault.html',
   'apps/electronics-calc.html',
   'data/snippets.json',
+  'data/my-apps.json',
   'data/snippets/esp32_relay_webserver.ino',
   'data/snippets/oled_ssd1306_i2c.ino',
   'data/snippets/lcd_i2c_16x2.ino',
@@ -86,6 +90,8 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+const INSTALLER = /\.(exe|msi|msix|apk|aab|xapk|ipa|dmg|pkg|deb|rpm|appimage|snap|flatpak|zip|7z|rar|tar|gz|iso)$/i;
+
 // Cache key without the query string so "?embed=1" and "?source=pwa" share one entry.
 const keyFor = (url) => new Request(url.origin + url.pathname);
 
@@ -95,6 +101,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname === '/sw.js') return;
+  // Never touch installers / large downloads: they are hosted externally (GitHub Releases, Cloudflare R2),
+  // and even if one is ever served from this origin it must go straight to the network, uncached.
+  if (INSTALLER.test(url.pathname) || url.pathname.startsWith('/downloads/')) return;
 
   event.respondWith(handle(event, req, url));
 });

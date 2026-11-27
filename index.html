@@ -17,6 +17,7 @@
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="assets/css/global.css">
   <link rel="stylesheet" href="assets/css/hub.css">
+  <link rel="stylesheet" href="assets/css/myapps.css">
   <script src="assets/js/theme.js"></script>
   <script src="assets/js/i18n.js"></script>
 </head>
@@ -40,6 +41,12 @@
       <button type="button" class="secondary icon-btn" id="themeBtn" aria-label="Toggle light / dark theme"></button>
     </header>
 
+    <nav class="views" id="views" aria-label="Sections">
+      <a href="#/" data-view="playground" aria-current="page">Playground</a>
+      <a href="#/my-apps" data-view="my-apps">My Apps</a>
+    </nav>
+
+    <div id="hubView">
     <section class="hero">
       <h2>Small tools.<br>Zero friction.</h2>
       <p>28 private mini apps that run entirely in your browser. No accounts, no uploads — and they keep working offline.</p>
@@ -71,9 +78,56 @@
       <ul class="snip-list" id="snipList"></ul>
     </section>
 
+    </div><!-- /hubView -->
+
+    <section id="myApps" hidden aria-labelledby="maTitle">
+      <div class="ma-hero">
+        <span class="ma-pub"><img src="assets/icons/dwix-labs.svg" width="24" height="24" alt=""><span>Published by <b translate="no">Dwix Labs</b></span></span>
+        <h2 id="maTitle">My Apps</h2>
+        <p>Downloadable software built by Dwix Labs for Android, iOS, Windows and Linux.</p>
+      </div>
+
+      <div class="ma-tabs" id="maTabs" role="tablist" aria-label="Platform"></div>
+
+      <div class="ma-controls">
+        <div class="ma-field ma-search">
+          <label for="maSearch" class="ma-lab">Search</label>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="maSearch" type="search" placeholder="Search by name or description" autocomplete="off" spellcheck="false" enterkeyhint="search">
+        </div>
+        <label class="ma-field"><span>Category</span>
+          <select id="maCat"><option value="all">All categories</option></select>
+        </label>
+        <label class="ma-field"><span>Status</span>
+          <select id="maStatus">
+            <option value="all">All statuses</option>
+            <option value="available">Available</option>
+            <option value="coming-soon">Coming soon</option>
+            <option value="not-released">Not released</option>
+          </select>
+        </label>
+        <label class="ma-field"><span>Sort by</span>
+          <select id="maSort">
+            <option value="name">Name (A–Z)</option>
+            <option value="newest">Newest release</option>
+            <option value="version">Version (highest)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="ma-bar" id="maBar" hidden>
+        <span id="maCount" aria-live="polite"></span>
+        <button type="button" class="ma-link" id="maReset" hidden>Clear filters</button>
+      </div>
+
+      <ul class="ma-grid" id="maGrid" role="tabpanel" aria-busy="true"></ul>
+      <div class="ma-state" id="maState" hidden></div>
+    </section>
+
     <noscript><p class="empty">DAWAPPS needs JavaScript. You can still open any tool directly from the <code>/apps</code> folder.</p></noscript>
 
     <footer class="foot">
+      <span class="copy" translate="no">&copy; <span id="maYear"></span> Dwix Labs. All rights reserved.</span>
       <span class="pill" id="net"><i class="dot"></i><span id="netText">Online</span></span>
       <span>Vanilla JS · No tracking · Your data never leaves this device</span>
     </footer>
@@ -100,6 +154,20 @@
     </div>
   </div>
 
+  <!-- My Apps details -->
+  <div class="ma-modal" id="maModal" role="dialog" aria-modal="true" aria-hidden="true" inert hidden>
+    <div class="ma-panel">
+      <div class="ma-mhead">
+        <strong id="maMTitle"></strong>
+        <button type="button" class="secondary icon-btn" id="maMClose" aria-label="Close details (Esc)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="ma-mbody" id="maMBody"></div>
+      <div class="ma-mfoot" id="maMFoot"></div>
+    </div>
+  </div>
+
   <div class="update-bar" id="update" hidden role="status">
     <span>A new version is available.</span>
     <button type="button" id="reload">Reload</button>
@@ -108,5 +176,6 @@
   <script src="assets/js/common.js"></script>
   <script src="assets/js/apps.js"></script>
   <script src="assets/js/hub.js"></script>
+  <script src="assets/js/myapps.js"></script>
 </body>
 </html>
